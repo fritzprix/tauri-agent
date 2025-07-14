@@ -75,7 +75,42 @@ crab-agent/
 - **Node.js**: v18 이상
 - **pnpm**: `npm install -g pnpm`
 
-### 2. 의존성 설치
+### 2. 환경 변수 설정
+
+```bash
+# .env 파일 생성
+cp .env.example .env
+
+```
+
+**필수 설정:**
+
+- `VITE_GROQ_API_KEY`: [Groq Console](https://console.groq.com/keys)에서 무료 API 키 발급
+- `VITE_OPENAI_API_KEY`: [OpenAI Platform](https://platform.openai.com/api-keys)에서 API 키 발급 (선택사항)
+- `VITE_ANTHROPIC_API_KEY`: [Anthropic Console](https://console.anthropic.com/)에서 API 키 발급 (선택사항)
+
+## 🔑 빠른 시작 가이드
+
+### AI API 키 발급 받기
+
+**1. Groq (무료, 빠른 추론)** - 추천! 🌟
+1. [Groq Console](https://console.groq.com/keys) 방문
+2. 계정 생성 후 "Create API Key" 클릭
+3. 키를 복사해서 `.env` 파일의 `VITE_GROQ_API_KEY`에 붙여넣기
+
+**2. OpenAI (GPT-4o, GPT-4o-mini)**
+1. [OpenAI Platform](https://platform.openai.com/api-keys) 방문
+2. "Create new secret key" 클릭
+3. 키를 복사해서 `.env` 파일의 `VITE_OPENAI_API_KEY`에 붙여넣기
+
+**3. Anthropic (Claude-3.5-Sonnet)**
+1. [Anthropic Console](https://console.anthropic.com/) 방문
+2. API Keys 섹션에서 새 키 생성
+3. 키를 복사해서 `.env` 파일의 `VITE_ANTHROPIC_API_KEY`에 붙여넣기
+
+> 💡 **팁**: Groq는 무료 tier에서도 충분히 빠르고 강력합니다!
+
+### 3. 의존성 설치
 
 ```bash
 # Node.js 의존성 설치
@@ -84,13 +119,13 @@ pnpm install
 # Rust 의존성은 자동으로 설치됩니다
 ```
 
-### 3. 개발 모드 실행
+### 4. 개발 모드 실행
 
 ```bash
 pnpm tauri dev
 ```
 
-### 4. 프로덕션 빌드
+### 5. 프로덕션 빌드
 
 ```bash
 pnpm tauri build
@@ -142,8 +177,5 @@ async fn start_mcp_server(config: MCPServerConfig) -> Result<String, String> {
 - ✅ **기본 Tauri 앱 구조**: 완료
 - ✅ **React 컴포넌트 마이그레이션**: 완료  
 - ✅ **Rust MCP 서버 관리**: 실제 구현 완료
-- 🚧 **AI 모델 연동**: 계획 단계
 
 ---
-
-**원래 Next.js 웹앱에서 Tauri로 마이그레이션한 프로젝트입니다.** 기존 React 컴포넌트를 100% 재사용하면서 Rust의 성능과 안정성을 활용한 데스크톱 앱으로 발전시켰습니다.
