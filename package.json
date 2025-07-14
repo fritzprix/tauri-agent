@@ -3,11 +3,11 @@
   "private": false,
   "version": "0.1.0",
   "description": "Lightning Fast AI Companion - Tauri-based AI agent platform with MCP integration",
-  "author": "Your Name",
+  "author": "fritzprix",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/yourusername/tauri-agent.git"
+    "url": "https://github.com/fritzprix/tauri-agent.git"
   },
   "keywords": [
     "tauri", 
