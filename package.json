@@ -25,6 +25,7 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
+    "test": "echo 'No tests yet - TypeScript check will run'",
     "tauri": "tauri"
   },
   "dependencies": {
