@@ -514,14 +514,12 @@ export default function Chat() {
           <div className="flex justify-between items-center">
             <TabsList>
               <TabsTrigger 
-                value="chat" 
                 onClick={() => setMode('chat')}
                 isActive={mode === 'chat'}
               >
                 [chat]
               </TabsTrigger>
               <TabsTrigger 
-                value="agent" 
                 onClick={() => setMode('agent')}
                 isActive={mode === 'agent'}
               >

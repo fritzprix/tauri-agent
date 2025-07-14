@@ -126,47 +126,11 @@ export default function RoleManager({ onClose, onRoleSelect, onRoleUpdate, curre
       // Claude MCP 형식을 내부 형식으로 변환
       let convertedConfig = { ...mcpConfig };
       
+      // Keep only Claude format (mcpServers)
       if (mcpConfig.mcpServers) {
-        // Claude 형식인 경우 내부 servers 배열 형식으로도 변환하여 저장
-        const servers = Object.entries(mcpConfig.mcpServers).map(([name, config]: [string, any]) => ({
-          name,
-          command: config.command,
-          args: config.args || [],
-          env: config.env || {},
-          transport: 'stdio' as const // Claude MCP는 기본적으로 stdio 사용
-        }));
-        
         convertedConfig = {
-          ...mcpConfig,
-          servers // 기존 코드와 호환성을 위해 servers 배열도 추가
+          mcpServers: mcpConfig.mcpServers
         };
-      } else if (mcpConfig.servers && Array.isArray(mcpConfig.servers)) {
-        // 기존 형식인 경우 transport 필드가 없으면 자동 추론
-        convertedConfig.servers = mcpConfig.servers.map((server: {
-          name: string;
-          command?: string;
-          args?: string[];
-          env?: Record<string, string>;
-          transport?: string;
-          url?: string;
-          port?: number;
-        }) => {
-          let transport = server.transport;
-          if (!transport) {
-            if (server.command && ['npx', 'node', 'python', 'python3'].includes(server.command)) {
-              transport = 'stdio';
-            } else if (server.url || server.port) {
-              transport = 'http';
-            } else {
-              transport = 'stdio';
-            }
-          }
-          
-          return {
-            ...server,
-            transport
-          };
-        });
       }
       
       const role: Role = {
@@ -429,23 +393,10 @@ export default function RoleManager({ onClose, onRoleSelect, onRoleUpdate, curre
       "env": {}
     }
   }
-}
-
-또는 기존 형식:
-{
-  "servers": [
-    {
-      "name": "filesystem",
-      "command": "mcp-server-filesystem",
-      "args": ["/path/to/directory"],
-      "transport": "stdio",
-      "env": {}
-    }
-  ]
 }`}
                   />
                   <div className="text-xs text-gray-500 mt-1">
-                    * Claude MCP 형식 (mcpServers) 또는 기존 형식 (servers) 모두 지원합니다. 빈 객체로 두면 MCP 서버를 사용하지 않습니다.
+                    * Claude MCP 형식 (mcpServers)을 사용합니다. 빈 객체로 두면 MCP 서버를 사용하지 않습니다.
                   </div>
                   
                   {/* Server Status Display */}

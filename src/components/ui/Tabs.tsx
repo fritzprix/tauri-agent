@@ -13,7 +13,6 @@ interface TabsListProps {
 }
 
 interface TabsTriggerProps {
-  value: string;
   children: React.ReactNode;
   onClick?: () => void;
   isActive?: boolean;
