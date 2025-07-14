@@ -47,7 +47,7 @@ export class TauriMCPClient {
     return await invoke('list_mcp_tools', { serverName });
   }
 
-  async listToolsFromConfig(config: { servers: MCPServerConfig[] }): Promise<MCPTool[]> {
+  async listToolsFromConfig(config: { mcpServers?: Record<string, { command: string; args?: string[]; env?: Record<string, string> }> }): Promise<MCPTool[]> {
     return await invoke('list_tools_from_config', { config });
   }
 

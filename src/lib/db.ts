@@ -3,15 +3,6 @@ export interface Role {
   name: string;
   systemPrompt: string;
   mcpConfig: {
-    servers?: {
-      name: string;
-      command?: string;
-      args?: string[];
-      env?: Record<string, string>;
-      transport: 'stdio' | 'http' | 'websocket';
-      url?: string;
-      port?: number;
-    }[];
     mcpServers?: Record<string, {
       command: string;
       args?: string[];

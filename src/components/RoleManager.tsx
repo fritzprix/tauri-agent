@@ -75,38 +75,7 @@ export default function RoleManager({ onClose, onRoleSelect, onRoleUpdate, curre
   const loadRoles = async () => {
     try {
       const allRoles = await mcpDB.getRoles();
-      
-      // Migrate roles to ensure they have proper format
-      const migratedRoles = allRoles.map(role => {
-        // If role has old format but no new format, migrate it
-        if (role.mcpConfig.servers && !role.mcpConfig.mcpServers) {
-          const mcpServers: Record<string, any> = {};
-          role.mcpConfig.servers.forEach(server => {
-            mcpServers[server.name] = {
-              command: server.command || 'npx',
-              args: server.args || [],
-              env: server.env || {}
-            };
-          });
-          
-          // Update the role with both formats
-          const updatedRole = {
-            ...role,
-            mcpConfig: {
-              ...role.mcpConfig,
-              mcpServers
-            }
-          };
-          
-          // Save the migrated role back to database
-          mcpDB.saveRole(updatedRole).catch(console.error);
-          return updatedRole;
-        }
-        
-        return role;
-      });
-      
-      setRoles(migratedRoles);
+      setRoles(allRoles);
     } catch (error) {
       console.error('Error loading roles:', error);
     }
@@ -315,11 +284,6 @@ export default function RoleManager({ onClose, onRoleSelect, onRoleUpdate, curre
                       Object.keys(role.mcpConfig.mcpServers).forEach(name => allServers.add(name));
                     }
                     
-                    // Add legacy format servers (only if not already present)
-                    if (role.mcpConfig.servers) {
-                      role.mcpConfig.servers.forEach(server => allServers.add(server.name));
-                    }
-                    
                     return allServers.size;
                   })()}개
                 </div>
@@ -333,15 +297,6 @@ export default function RoleManager({ onClose, onRoleSelect, onRoleUpdate, curre
                     if (role.mcpConfig.mcpServers) {
                       Object.keys(role.mcpConfig.mcpServers).forEach(serverName => {
                         allServers.set(serverName, serverName);
-                      });
-                    }
-                    
-                    // Add legacy format servers (only if not already present)
-                    if (role.mcpConfig.servers) {
-                      role.mcpConfig.servers.forEach(server => {
-                        if (!allServers.has(server.name)) {
-                          allServers.set(server.name, server.name);
-                        }
                       });
                     }
                     

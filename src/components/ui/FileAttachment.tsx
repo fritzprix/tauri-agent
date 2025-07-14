@@ -13,7 +13,6 @@ export default function FileAttachment({
   files, 
   onRemove, 
   onAdd,
-  maxFileSize = 1024 * 1024, // 1MB default
   allowedExtensions = ['txt', 'md', 'json', 'js', 'ts', 'tsx', 'jsx', 'py', 'java', 'cpp', 'c', 'h', 'css', 'html', 'xml', 'yaml', 'yml', 'csv'],
   compact = false
 }: FileAttachmentProps) {

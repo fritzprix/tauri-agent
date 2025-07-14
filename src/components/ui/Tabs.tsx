@@ -60,7 +60,7 @@ export function TabsList({ children, className = '' }: TabsListProps) {
   );
 }
 
-export function TabsTrigger({ value, children, onClick, isActive }: TabsTriggerProps) {
+export function TabsTrigger({ children, onClick, isActive }: TabsTriggerProps) {
   return (
     <button
       onClick={onClick}

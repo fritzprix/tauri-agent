@@ -1,4 +1,5 @@
 // Tauri 환경에서 환경변수 로드를 위한 유틸리티
+import { log } from './logger';
 
 export function loadEnvConfig(): { [key: string]: string } {
   if (typeof window !== 'undefined' && (window as unknown as { __TAURI__?: unknown }).__TAURI__) {
@@ -24,7 +25,7 @@ export function getGroqApiKey(): string {
   const apiKey = env.GROQ_API_KEY;
   
   if (!apiKey) {
-    console.warn('GROQ_API_KEY not found. Please set VITE_GROQ_API_KEY in your .env file');
+    log.warn('GROQ_API_KEY not found. Please set VITE_GROQ_API_KEY in your .env file', 'EnvConfig');
   }
   
   return apiKey;

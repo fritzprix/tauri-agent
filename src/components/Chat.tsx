@@ -202,19 +202,15 @@ export default function Chat() {
     try {
       console.log(`[DEBUG] Role MCP Config:`, JSON.stringify(role.mcpConfig, null, 2));
       
-      // 서버 개수 계산 (Claude 형식과 기존 형식 모두 지원)
+      // 서버 개수 계산 (Claude 형식만 지원)
       const claudeServersCount = role.mcpConfig.mcpServers ? Object.keys(role.mcpConfig.mcpServers).length : 0;
-      const legacyServersCount = role.mcpConfig.servers?.length || 0;
-      console.log(`[DEBUG] Number of servers in config: Claude: ${claudeServersCount}, Legacy: ${legacyServersCount}`);
+      console.log(`[DEBUG] Number of servers in config: ${claudeServersCount}`);
       
-      // 각 서버의 연결 상태 추적 (중복 제거)
+      // 각 서버의 연결 상태 추적
       const allServerNames = new Set<string>();
       
       if (role.mcpConfig.mcpServers) {
         Object.keys(role.mcpConfig.mcpServers).forEach(name => allServerNames.add(name));
-      }
-      if (role.mcpConfig.servers) {
-        role.mcpConfig.servers.forEach(server => allServerNames.add(server.name));
       }
       
       // 모든 서버를 false로 초기화
@@ -226,36 +222,12 @@ export default function Chat() {
       // Tauri MCP 클라이언트로 연결
       console.log(`[DEBUG] Calling tauriMCPClient.listToolsFromConfig...`);
       
-      // 설정을 Tauri 클라이언트가 예상하는 형식으로 변환 (중복 제거)
-      let configForTauri = { servers: [] as any[] };
-      const serverMap = new Map();
+      // 설정을 Claude 형식으로 Tauri 클라이언트에 전달
+      const configForTauri = {
+        mcpServers: role.mcpConfig.mcpServers || {}
+      };
       
-      // Claude 형식 변환 (우선순위 높음)
-      if (role.mcpConfig.mcpServers) {
-        Object.entries(role.mcpConfig.mcpServers).forEach(([name, config]: [string, any]) => {
-          serverMap.set(name, {
-            name,
-            command: config.command,
-            args: config.args || [],
-            env: config.env || {},
-            transport: 'stdio' as const
-          });
-        });
-      }
-      
-      // 기존 형식 추가 (Claude 형식에 없는 것만)
-      if (role.mcpConfig.servers && Array.isArray(role.mcpConfig.servers)) {
-        role.mcpConfig.servers.forEach(server => {
-          if (!serverMap.has(server.name)) {
-            serverMap.set(server.name, server);
-          }
-        });
-      }
-      
-      // Map을 배열로 변환
-      configForTauri.servers = Array.from(serverMap.values());
-      
-      console.log(`[DEBUG] Final config for Tauri (deduplicated):`, JSON.stringify(configForTauri, null, 2));
+      console.log(`[DEBUG] Final config for Tauri (Claude format):`, JSON.stringify(configForTauri, null, 2));
       
       const tools = await tauriMCPClient.listToolsFromConfig(configForTauri);
       console.log(`[DEBUG] Received tools from Tauri:`, tools);

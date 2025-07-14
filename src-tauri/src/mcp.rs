@@ -1,10 +1,15 @@
+use anyhow::Result;
+use rmcp::{
+    model::CallToolRequestParam,
+    service::{RoleClient, RunningService},
+    transport::{ConfigureCommandExt, TokioChildProcess},
+    ServiceExt,
+};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
-use tokio::sync::Mutex;
-use rmcp::{ServiceExt, transport::{TokioChildProcess, ConfigureCommandExt}, model::CallToolRequestParam, service::{RoleClient, RunningService}};
 use tokio::process::Command;
-use anyhow::Result;
+use tokio::sync::Mutex;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MCPServerConfig {
@@ -63,24 +68,28 @@ impl MCPServerManager {
                 // WebSocket 서버는 외부에서 이미 실행 중이라고 가정
                 Ok(format!("WebSocket server configured: {}", config.name))
             }
-            _ => Err(anyhow::anyhow!("Unsupported transport: {}", config.transport)),
+            _ => Err(anyhow::anyhow!(
+                "Unsupported transport: {}",
+                config.transport
+            )),
         }
     }
 
     async fn start_stdio_server(&self, config: MCPServerConfig) -> Result<String> {
-        let command = config.command.as_ref().ok_or_else(|| {
-            anyhow::anyhow!("Command is required for stdio transport")
-        })?;
+        let command = config
+            .command
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("Command is required for stdio transport"))?;
 
         let default_args = vec![];
         let args = config.args.as_ref().unwrap_or(&default_args);
-        
+
         // Create command with rmcp - configure returns the modified command
         let cmd = Command::new(command).configure(|cmd| {
             for arg in args {
                 cmd.arg(arg);
             }
-            
+
             // Set environment variables if any
             if let Some(env) = &config.env {
                 for (key, value) in env {
@@ -92,13 +101,11 @@ impl MCPServerManager {
         // Create transport and connect using RMCP pattern
         let transport = TokioChildProcess::new(cmd)?;
         println!("Created transport for command: {} {:?}", command, args);
-        
+
         let client = ().serve(transport).await?;
         println!("Successfully connected to MCP server: {}", config.name);
 
-        let connection = MCPConnection {
-            client,
-        };
+        let connection = MCPConnection { client };
 
         // Store connection
         {
@@ -107,13 +114,16 @@ impl MCPServerManager {
             println!("Stored connection for server: {}", config.name);
         }
 
-        Ok(format!("Started and connected to MCP server: {}", config.name))
+        Ok(format!(
+            "Started and connected to MCP server: {}",
+            config.name
+        ))
     }
 
     /// MCP 서버를 중지합니다
     pub async fn stop_server(&self, server_name: &str) -> Result<()> {
         let mut connections = self.connections.lock().await;
-        
+
         if let Some(connection) = connections.remove(server_name) {
             // Cancel the client connection
             let _ = connection.client.cancel().await;
@@ -131,7 +141,7 @@ impl MCPServerManager {
         arguments: serde_json::Value,
     ) -> ToolCallResult {
         let connections = self.connections.lock().await;
-        
+
         if let Some(connection) = connections.get(server_name) {
             // RMCP API 사용 - CallToolRequestParam 구조체 사용
             let args_map = if let serde_json::Value::Object(obj) = arguments {
@@ -169,7 +179,7 @@ impl MCPServerManager {
     /// 사용 가능한 도구 목록을 가져옵니다
     pub async fn list_tools(&self, server_name: &str) -> Result<Vec<MCPTool>> {
         let connections = self.connections.lock().await;
-        
+
         if let Some(connection) = connections.get(server_name) {
             println!("Found connection for server: {}", server_name);
             // RMCP API 사용 - list_all_tools 메서드 사용
@@ -177,7 +187,7 @@ impl MCPServerManager {
                 Ok(tools_response) => {
                     println!("Raw tools response: {:?}", tools_response);
                     let mut tools = Vec::new();
-                    
+
                     // tools_response는 이미 Vec<Tool>이므로 직접 iterate
                     for tool in tools_response {
                         println!("Processing tool: {:?}", tool);
@@ -188,7 +198,7 @@ impl MCPServerManager {
                                 .unwrap_or(serde_json::Value::Object(serde_json::Map::new())),
                         });
                     }
-                    
+
                     println!("Converted {} tools", tools.len());
                     Ok(tools)
                 }
@@ -219,11 +229,11 @@ impl MCPServerManager {
     pub async fn check_all_servers(&self) -> HashMap<String, bool> {
         let connections = self.connections.lock().await;
         let mut status_map = HashMap::new();
-        
+
         for server_name in connections.keys() {
             status_map.insert(server_name.clone(), true);
         }
-        
+
         status_map
     }
 }
