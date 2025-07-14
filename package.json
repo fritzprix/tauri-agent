@@ -1,7 +1,25 @@
 {
-  "name": "tauri-mcp-agent",
-  "private": true,
+  "name": "tauri-agent",
+  "private": false,
   "version": "0.1.0",
+  "description": "Lightning Fast AI Companion - Tauri-based AI agent platform with MCP integration",
+  "author": "Your Name",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/yourusername/tauri-agent.git"
+  },
+  "keywords": [
+    "tauri", 
+    "ai", 
+    "agent", 
+    "mcp", 
+    "model-context-protocol", 
+    "rust", 
+    "react", 
+    "desktop", 
+    "electron-alternative"
+  ],
   "type": "module",
   "scripts": {
     "dev": "vite",

@@ -1,0 +1,102 @@
+name: 🚀 TauriAgent CI/CD
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  release:
+    types: [ published ]
+
+jobs:
+  test:
+    name: 🧪 Test
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    
+    steps:
+    - name: 📥 Checkout
+      uses: actions/checkout@v4
+    
+    - name: 🦀 Setup Rust
+      uses: dtolnay/rust-toolchain@stable
+    
+    - name: 📦 Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        cache: 'npm'
+    
+    - name: 🔧 Install pnpm
+      run: npm install -g pnpm
+    
+    - name: 📦 Install dependencies
+      run: pnpm install
+    
+    - name: 🧪 Run tests
+      run: pnpm test
+    
+    - name: 🔍 Check TypeScript
+      run: pnpm tsc --noEmit
+    
+    - name: 🦀 Check Rust
+      run: cd src-tauri && cargo check
+
+  build:
+    name: 🔨 Build
+    needs: test
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    
+    steps:
+    - name: 📥 Checkout
+      uses: actions/checkout@v4
+    
+    - name: 🦀 Setup Rust
+      uses: dtolnay/rust-toolchain@stable
+    
+    - name: 📦 Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        cache: 'npm'
+    
+    - name: 🔧 Install pnpm
+      run: npm install -g pnpm
+    
+    - name: 📦 Install dependencies
+      run: pnpm install
+    
+    - name: 🏗️ Build Tauri app
+      run: pnpm tauri build
+    
+    - name: 📤 Upload artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: tauri-agent-${{ matrix.os }}
+        path: src-tauri/target/release/bundle/
+
+  release:
+    name: 🎉 Release
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.event_name == 'release'
+    
+    steps:
+    - name: 📥 Checkout
+      uses: actions/checkout@v4
+    
+    - name: 📥 Download artifacts
+      uses: actions/download-artifact@v4
+    
+    - name: 🎉 Upload release assets
+      uses: softprops/action-gh-release@v1
+      with:
+        files: |
+          tauri-agent-*/
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
