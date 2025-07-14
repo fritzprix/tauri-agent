@@ -3,7 +3,7 @@ export interface Role {
   name: string;
   systemPrompt: string;
   mcpConfig: {
-    servers: {
+    servers?: {
       name: string;
       command?: string;
       args?: string[];
@@ -12,6 +12,11 @@ export interface Role {
       url?: string;
       port?: number;
     }[];
+    mcpServers?: Record<string, {
+      command: string;
+      args?: string[];
+      env?: Record<string, string>;
+    }>;
   };
   isDefault: boolean;
   createdAt: Date;
@@ -71,7 +76,7 @@ class MCPDatabase {
       name: 'Default Assistant',
       systemPrompt: 'You are a helpful AI assistant. You can help with various tasks including coding, analysis, and general questions.',
       mcpConfig: {
-        servers: []
+        mcpServers: {}
       },
       isDefault: true,
       createdAt: new Date(),

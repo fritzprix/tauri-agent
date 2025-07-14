@@ -2,6 +2,15 @@
 
 import { useState, useEffect } from 'react';
 import { mcpDB, Role } from '../lib/db';
+import { tauriMCPClient } from '../lib/tauri-mcp-client';
+import { 
+  Modal, 
+  Button, 
+  Input, 
+  Textarea, 
+  StatusIndicator, 
+  Badge 
+} from './ui';
 
 interface RoleManagerProps {
   onClose: () => void;
@@ -15,15 +24,89 @@ export default function RoleManager({ onClose, onRoleSelect, onRoleUpdate, curre
   const [editingRole, setEditingRole] = useState<Partial<Role> | null>(null);
   const [isCreating, setIsCreating] = useState(false);
   const [mcpConfigText, setMcpConfigText] = useState('');
+  const [serverStatuses, setServerStatuses] = useState<Record<string, boolean>>({});
+  const [isCheckingStatus, setIsCheckingStatus] = useState(false);
 
   useEffect(() => {
-    loadRoles();
+    const initRoles = async () => {
+      await loadRoles();
+      // Check status for current role if available
+      if (currentRole) {
+        await checkServerStatuses(currentRole.mcpConfig);
+      }
+    };
+    initRoles();
   }, []);
+
+  // 서버 상태 체크
+  const checkServerStatuses = async (mcpConfig: any) => {
+    setIsCheckingStatus(true);
+    try {
+      const statuses: Record<string, boolean> = {};
+      const allServerNames = new Set<string>();
+      
+      // Collect all unique server names
+      if (mcpConfig.mcpServers) {
+        Object.keys(mcpConfig.mcpServers).forEach(name => allServerNames.add(name));
+      }
+      
+      if (mcpConfig.servers && Array.isArray(mcpConfig.servers)) {
+        mcpConfig.servers.forEach((server: any) => allServerNames.add(server.name));
+      }
+      
+      // Check status for each unique server
+      for (const serverName of allServerNames) {
+        try {
+          const isConnected = await tauriMCPClient.checkServerStatus(serverName);
+          statuses[serverName] = isConnected;
+        } catch {
+          statuses[serverName] = false;
+        }
+      }
+      
+      setServerStatuses(statuses);
+    } catch (error) {
+      console.error('Error checking server statuses:', error);
+    } finally {
+      setIsCheckingStatus(false);
+    }
+  };
 
   const loadRoles = async () => {
     try {
       const allRoles = await mcpDB.getRoles();
-      setRoles(allRoles);
+      
+      // Migrate roles to ensure they have proper format
+      const migratedRoles = allRoles.map(role => {
+        // If role has old format but no new format, migrate it
+        if (role.mcpConfig.servers && !role.mcpConfig.mcpServers) {
+          const mcpServers: Record<string, any> = {};
+          role.mcpConfig.servers.forEach(server => {
+            mcpServers[server.name] = {
+              command: server.command || 'npx',
+              args: server.args || [],
+              env: server.env || {}
+            };
+          });
+          
+          // Update the role with both formats
+          const updatedRole = {
+            ...role,
+            mcpConfig: {
+              ...role.mcpConfig,
+              mcpServers
+            }
+          };
+          
+          // Save the migrated role back to database
+          mcpDB.saveRole(updatedRole).catch(console.error);
+          return updatedRole;
+        }
+        
+        return role;
+      });
+      
+      setRoles(migratedRoles);
     } catch (error) {
       console.error('Error loading roles:', error);
     }
@@ -34,19 +117,23 @@ export default function RoleManager({ onClose, onRoleSelect, onRoleUpdate, curre
     setEditingRole({
       name: '',
       systemPrompt: 'You are a helpful AI assistant with access to various tools. Use the available tools to help users accomplish their tasks.',
-      mcpConfig: { servers: [] }
+      mcpConfig: {}
     });
     
-    // 기본 MCP 설정 예시 - sequential-thinking 서버 사용
+    // Claude MCP 설정 예시 - sequential-thinking 서버 사용
     const defaultMcpConfig = {
-      servers: [
-        {
-          name: "sequential-thinking",
+      mcpServers: {
+        "sequential-thinking": {
           command: "npx",
           args: ["-y", "@modelcontextprotocol/server-sequential-thinking"],
-          transport: "stdio"
+          env: {}
+        },
+        "filesystem": {
+          command: "npx",
+          args: ["-y", "@modelcontextprotocol/server-filesystem", "/tmp"],
+          env: {}
         }
-      ]
+      }
     };
     
     setMcpConfigText(JSON.stringify(defaultMcpConfig, null, 2));
@@ -67,9 +154,26 @@ export default function RoleManager({ onClose, onRoleSelect, onRoleUpdate, curre
     try {
       const mcpConfig = JSON.parse(mcpConfigText);
       
-      // MCP 설정에 기본값 추가 (transport 필드가 없는 경우)
-      if (mcpConfig.servers && Array.isArray(mcpConfig.servers)) {
-        mcpConfig.servers = mcpConfig.servers.map((server: {
+      // Claude MCP 형식을 내부 형식으로 변환
+      let convertedConfig = { ...mcpConfig };
+      
+      if (mcpConfig.mcpServers) {
+        // Claude 형식인 경우 내부 servers 배열 형식으로도 변환하여 저장
+        const servers = Object.entries(mcpConfig.mcpServers).map(([name, config]: [string, any]) => ({
+          name,
+          command: config.command,
+          args: config.args || [],
+          env: config.env || {},
+          transport: 'stdio' as const // Claude MCP는 기본적으로 stdio 사용
+        }));
+        
+        convertedConfig = {
+          ...mcpConfig,
+          servers // 기존 코드와 호환성을 위해 servers 배열도 추가
+        };
+      } else if (mcpConfig.servers && Array.isArray(mcpConfig.servers)) {
+        // 기존 형식인 경우 transport 필드가 없으면 자동 추론
+        convertedConfig.servers = mcpConfig.servers.map((server: {
           name: string;
           command?: string;
           args?: string[];
@@ -78,17 +182,13 @@ export default function RoleManager({ onClose, onRoleSelect, onRoleUpdate, curre
           url?: string;
           port?: number;
         }) => {
-          // transport가 명시되지 않은 경우 자동 추론
           let transport = server.transport;
           if (!transport) {
-            // command가 npx, node, python 등인 경우 stdio 사용
             if (server.command && ['npx', 'node', 'python', 'python3'].includes(server.command)) {
               transport = 'stdio';
             } else if (server.url || server.port) {
-              // URL이나 port가 있으면 http/ws 사용
               transport = 'http';
             } else {
-              // 기본값은 stdio
               transport = 'stdio';
             }
           }
@@ -104,7 +204,7 @@ export default function RoleManager({ onClose, onRoleSelect, onRoleUpdate, curre
         id: editingRole.id || `role_${Date.now()}`,
         name: editingRole.name,
         systemPrompt: editingRole.systemPrompt,
-        mcpConfig,
+        mcpConfig: convertedConfig,
         isDefault: editingRole.isDefault || false,
         createdAt: editingRole.createdAt || new Date(),
         updatedAt: new Date()
@@ -113,10 +213,12 @@ export default function RoleManager({ onClose, onRoleSelect, onRoleUpdate, curre
       await mcpDB.saveRole(role);
       await loadRoles();
       
+      // 서버 상태 체크
+      await checkServerStatuses(convertedConfig);
+      
       // 현재 편집 중인 역할이 활성 역할인 경우 MCP 재연결
       if (currentRole && role.id === currentRole.id) {
         console.log('Reconnecting MCP for updated role:', role.name);
-        // onRoleSelect 대신 onRoleUpdate 사용 (모달을 닫지 않음)
         if (onRoleUpdate) {
           onRoleUpdate(role);
         } else {
@@ -128,11 +230,8 @@ export default function RoleManager({ onClose, onRoleSelect, onRoleUpdate, curre
       setIsCreating(false);
       setMcpConfigText('');
       
-      // 성공 알림
       console.log(`Role "${role.name}" saved successfully`);
-      
-      // JSON을 예쁘게 포맷팅해서 다시 설정
-      setMcpConfigText(JSON.stringify(mcpConfig, null, 2));
+      setMcpConfigText(JSON.stringify(convertedConfig, null, 2));
     } catch (error) {
       console.error('Error saving role:', error);
       alert('역할 저장 중 오류가 발생했습니다. MCP 설정이 올바른 JSON 형식인지 확인해주세요.');
@@ -167,28 +266,22 @@ export default function RoleManager({ onClose, onRoleSelect, onRoleUpdate, curre
   };
 
   return (
-    <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50">
-      <div className="bg-gray-900 border border-gray-700 rounded-lg w-[90%] max-w-6xl h-[80%] flex flex-col">
-        {/* Header */}
-        <div className="flex justify-between items-center p-4 border-b border-gray-700">
-          <h2 className="text-green-400 font-bold text-lg">Role Management</h2>
-          <button 
-            onClick={onClose} 
-            className="text-gray-500 hover:text-green-400 text-xl px-2"
+    <Modal 
+      isOpen={true} 
+      onClose={onClose} 
+      title="Role Management" 
+      size="xl"
+    >
+      <div className="flex flex-1 overflow-hidden">
+        {/* Role List */}
+        <div className="w-1/3 border-r border-gray-700 p-4 overflow-y-auto">
+          <Button 
+            variant="primary"
+            className="w-full mb-4"
+            onClick={handleCreateNew}
           >
-            ✕
-          </button>
-        </div>
-
-        <div className="flex flex-1 overflow-hidden">
-          {/* Role List */}
-          <div className="w-1/3 border-r border-gray-700 p-4 overflow-y-auto">
-            <button 
-              onClick={handleCreateNew}
-              className="w-full bg-green-900/20 border border-green-400 text-green-400 p-3 rounded mb-4 hover:bg-green-900/40 transition-colors"
-            >
-              + 새 역할 만들기
-            </button>
+            + 새 역할 만들기
+          </Button>
             
             {roles.map(role => (
               <div 
@@ -203,14 +296,10 @@ export default function RoleManager({ onClose, onRoleSelect, onRoleUpdate, curre
                   <h3 className="text-green-400 font-medium">{role.name}</h3>
                   <div className="flex gap-1">
                     {role.isDefault && (
-                      <span className="text-yellow-400 text-xs bg-yellow-900/20 px-1 rounded">
-                        DEFAULT
-                      </span>
+                      <Badge variant="warning">DEFAULT</Badge>
                     )}
                     {currentRole?.id === role.id && (
-                      <span className="text-blue-400 text-xs bg-blue-900/20 px-1 rounded">
-                        ACTIVE
-                      </span>
+                      <Badge variant="active">ACTIVE</Badge>
                     )}
                   </div>
                 </div>
@@ -218,62 +307,121 @@ export default function RoleManager({ onClose, onRoleSelect, onRoleUpdate, curre
                   {role.systemPrompt}
                 </p>
                 <div className="text-xs text-gray-500 mb-2">
-                  MCP 서버: {role.mcpConfig.servers.length}개
+                  MCP 서버: {(() => {
+                    const allServers = new Set();
+                    
+                    // Add Claude format servers
+                    if (role.mcpConfig.mcpServers) {
+                      Object.keys(role.mcpConfig.mcpServers).forEach(name => allServers.add(name));
+                    }
+                    
+                    // Add legacy format servers (only if not already present)
+                    if (role.mcpConfig.servers) {
+                      role.mcpConfig.servers.forEach(server => allServers.add(server.name));
+                    }
+                    
+                    return allServers.size;
+                  })()}개
                 </div>
+                
+                {/* Server Status Indicators */}
+                <div className="flex flex-wrap gap-1 mb-2">
+                  {(() => {
+                    const allServers = new Map();
+                    
+                    // Add Claude format servers
+                    if (role.mcpConfig.mcpServers) {
+                      Object.keys(role.mcpConfig.mcpServers).forEach(serverName => {
+                        allServers.set(serverName, serverName);
+                      });
+                    }
+                    
+                    // Add legacy format servers (only if not already present)
+                    if (role.mcpConfig.servers) {
+                      role.mcpConfig.servers.forEach(server => {
+                        if (!allServers.has(server.name)) {
+                          allServers.set(server.name, server.name);
+                        }
+                      });
+                    }
+                    
+                    return Array.from(allServers.keys()).map(serverName => (
+                      <div
+                        key={serverName}
+                        className="flex items-center gap-1 text-xs px-1 py-0.5 rounded bg-gray-800"
+                      >
+                        <StatusIndicator 
+                          status={
+                            serverStatuses[serverName] === true ? 'connected' : 
+                            serverStatuses[serverName] === false ? 'disconnected' : 'unknown'
+                          }
+                          size="sm"
+                        />
+                        <span className="text-gray-300">{serverName}</span>
+                      </div>
+                    ));
+                  })()}
+                </div>
+                
                 <div className="flex gap-2">
-                  <button 
+                  <Button 
+                    size="sm"
+                    variant="primary"
                     onClick={() => onRoleSelect(role)}
-                    className="text-xs text-green-400 hover:text-green-300 underline"
                   >
                     선택
-                  </button>
-                  <button 
+                  </Button>
+                  <Button 
+                    size="sm"
+                    variant="secondary"
                     onClick={() => handleEditRole(role)}
-                    className="text-xs text-blue-400 hover:text-blue-300 underline"
                   >
                     편집
-                  </button>
+                  </Button>
+                  <Button 
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => checkServerStatuses(role.mcpConfig)}
+                    disabled={isCheckingStatus}
+                  >
+                    {isCheckingStatus ? '확인중...' : '상태확인'}
+                  </Button>
                   {!role.isDefault && (
-                    <button 
+                    <Button 
+                      size="sm"
+                      variant="danger"
                       onClick={() => handleDeleteRole(role.id)}
-                      className="text-xs text-red-400 hover:text-red-300 underline"
                     >
                       삭제
-                    </button>
+                    </Button>
                   )}
                 </div>
               </div>
             ))}
-          </div>
+        </div>
 
-          {/* Role Editor */}
-          {(editingRole || isCreating) && (
+        {/* Role Editor */}
+        {(editingRole || isCreating) && (
             <div className="flex-1 p-4 overflow-y-auto">
               <h3 className="text-green-400 font-bold mb-4 text-lg">
                 {isCreating ? '새 역할 만들기' : '역할 편집'}
               </h3>
               
               <div className="space-y-4">
-                <div>
-                  <label className="block text-gray-400 mb-2 font-medium">역할 이름 *</label>
-                  <input
-                    type="text"
-                    value={editingRole?.name || ''}
-                    onChange={(e) => setEditingRole(prev => ({...prev, name: e.target.value}))}
-                    className="w-full bg-gray-800 border border-gray-600 p-3 rounded text-green-400 focus:border-green-400 focus:outline-none"
-                    placeholder="역할 이름을 입력하세요..."
-                  />
-                </div>
+                <Input
+                  label="역할 이름 *"
+                  value={editingRole?.name || ''}
+                  onChange={(e) => setEditingRole(prev => ({...prev, name: e.target.value}))}
+                  placeholder="역할 이름을 입력하세요..."
+                />
                 
-                <div>
-                  <label className="block text-gray-400 mb-2 font-medium">시스템 프롬프트 *</label>
-                  <textarea
-                    value={editingRole?.systemPrompt || ''}
-                    onChange={(e) => setEditingRole(prev => ({...prev, systemPrompt: e.target.value}))}
-                    className="w-full bg-gray-800 border border-gray-600 p-3 rounded text-green-400 h-32 focus:border-green-400 focus:outline-none resize-none"
-                    placeholder="AI가 수행할 역할과 행동 방식을 설명하세요..."
-                  />
-                </div>
+                <Textarea
+                  label="시스템 프롬프트 *"
+                  value={editingRole?.systemPrompt || ''}
+                  onChange={(e) => setEditingRole(prev => ({...prev, systemPrompt: e.target.value}))}
+                  placeholder="AI가 수행할 역할과 행동 방식을 설명하세요..."
+                  className="h-32"
+                />
                 
                 <div>
                   <div className="flex justify-between items-center mb-2">
@@ -283,48 +431,106 @@ export default function RoleManager({ onClose, onRoleSelect, onRoleUpdate, curre
                         - 연결할 MCP 서버들을 설정합니다
                       </span>
                     </label>
-                    <button
-                      type="button"
-                      onClick={handleFormatJson}
-                      className="text-xs text-blue-400 hover:text-blue-300 underline"
-                    >
-                      Format JSON
-                    </button>
+                    <div className="flex gap-2">
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => {
+                          try {
+                            const config = JSON.parse(mcpConfigText);
+                            checkServerStatuses(config);
+                          } catch {
+                            alert('유효하지 않은 JSON 형식입니다.');
+                          }
+                        }}
+                        disabled={isCheckingStatus}
+                      >
+                        {isCheckingStatus ? '확인중...' : '서버 상태 확인'}
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={handleFormatJson}
+                      >
+                        Format JSON
+                      </Button>
+                    </div>
                   </div>
-                  <textarea
+                  <Textarea
                     value={mcpConfigText}
                     onChange={(e) => setMcpConfigText(e.target.value)}
-                    className="w-full bg-gray-800 border border-gray-600 p-3 rounded text-green-400 h-48 font-mono text-sm focus:border-green-400 focus:outline-none resize-none"
-                    placeholder={`{
+                    className="h-48 font-mono text-sm"
+                    placeholder={`Claude MCP 형식:
+{
+  "mcpServers": {
+    "filesystem": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-filesystem", "/tmp"],
+      "env": {}
+    },
+    "sequential-thinking": {
+      "command": "npx", 
+      "args": ["-y", "@modelcontextprotocol/server-sequential-thinking"],
+      "env": {}
+    }
+  }
+}
+
+또는 기존 형식:
+{
   "servers": [
     {
       "name": "filesystem",
       "command": "mcp-server-filesystem",
       "args": ["/path/to/directory"],
+      "transport": "stdio",
       "env": {}
     }
   ]
 }`}
                   />
                   <div className="text-xs text-gray-500 mt-1">
-                    * JSON 형식으로 MCP 서버 설정을 입력하세요. 빈 배열로 두면 MCP 서버를 사용하지 않습니다.
+                    * Claude MCP 형식 (mcpServers) 또는 기존 형식 (servers) 모두 지원합니다. 빈 객체로 두면 MCP 서버를 사용하지 않습니다.
                   </div>
+                  
+                  {/* Server Status Display */}
+                  {Object.keys(serverStatuses).length > 0 && (
+                    <div className="mt-3 p-2 bg-gray-900 rounded border border-gray-700">
+                      <div className="text-xs text-gray-400 mb-2">서버 상태:</div>
+                      <div className="flex flex-wrap gap-2">
+                        {Object.entries(serverStatuses).map(([serverName, isConnected]) => (
+                          <div
+                            key={serverName}
+                            className="flex items-center gap-1 text-xs px-2 py-1 rounded bg-gray-800"
+                          >
+                            <StatusIndicator 
+                              status={isConnected ? 'connected' : 'disconnected'} 
+                            />
+                            <span className="text-gray-300">{serverName}</span>
+                            <Badge variant={isConnected ? 'success' : 'error'}>
+                              {isConnected ? 'OK' : 'NOK'}
+                            </Badge>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
               
               <div className="flex gap-3 mt-6 pt-4 border-t border-gray-700">
-                <button 
+                <Button 
+                  variant="primary"
                   onClick={handleSaveRole}
-                  className="bg-green-900/20 border border-green-400 text-green-400 px-6 py-2 rounded hover:bg-green-900/40 transition-colors"
                 >
                   저장
-                </button>
-                <button 
+                </Button>
+                <Button 
+                  variant="secondary"
                   onClick={handleCancel}
-                  className="bg-gray-800 border border-gray-600 text-gray-400 px-6 py-2 rounded hover:bg-gray-700 transition-colors"
                 >
                   취소
-                </button>
+                </Button>
               </div>
             </div>
           )}
@@ -340,7 +546,6 @@ export default function RoleManager({ onClose, onRoleSelect, onRoleUpdate, curre
             </div>
           )}
         </div>
-      </div>
-    </div>
+        </Modal>
   );
 }

@@ -3,6 +3,17 @@ import { mcpDB, Role } from '../lib/db';
 import { tauriMCPClient, MCPTool } from '../lib/tauri-mcp-client';
 import { getAIService, StreamableMessage } from '../lib/ai-service-simple';
 import RoleManager from './RoleManager';
+import { 
+  Button, 
+  StatusIndicator, 
+  Badge, 
+  LoadingSpinner, 
+  FileAttachment,
+  Tabs,
+  TabsList,
+  TabsTrigger,
+  Input
+} from './ui';
 
 interface MessageWithAttachments {
   id: string;
@@ -26,8 +37,40 @@ export default function Chat() {
   const [isInitialized, setIsInitialized] = useState(false);
   const [isMCPConnecting, setIsMCPConnecting] = useState(false);
   const [mcpServerStatus, setMcpServerStatus] = useState<Record<string, boolean>>({});
+  const [showServerDropdown, setShowServerDropdown] = useState(false);
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // MCP 서버 전체 상태 계산
+  const getMCPStatus = () => {
+    const servers = Object.entries(mcpServerStatus);
+    if (servers.length === 0) return { color: 'bg-gray-400', status: 'none' };
+    
+    const connectedCount = servers.filter(([_, isConnected]) => isConnected).length;
+    const totalCount = servers.length;
+    
+    if (connectedCount === totalCount) {
+      return { color: 'bg-green-400', status: 'all' };
+    } else if (connectedCount > 0) {
+      return { color: 'bg-yellow-400', status: 'partial' };
+    } else {
+      return { color: 'bg-red-400', status: 'none' };
+    }
+  };
+
+  const getStatusText = () => {
+    const { status } = getMCPStatus();
+    const servers = Object.entries(mcpServerStatus);
+    const connectedCount = servers.filter(([_, isConnected]) => isConnected).length;
+    const totalCount = servers.length;
+    
+    switch (status) {
+      case 'all': return `All ${totalCount} servers connected`;
+      case 'partial': return `${connectedCount}/${totalCount} servers connected`;
+      case 'none': return totalCount > 0 ? `All ${totalCount} servers disconnected` : 'No servers configured';
+      default: return 'Unknown status';
+    }
+  };
 
   // Chat messages for simple chat mode (without AI integration for now)
   const [messages, setMessages] = useState<MessageWithAttachments[]>([]);
@@ -135,6 +178,20 @@ export default function Chat() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, agentMessages]);
 
+  // 드롭다운 외부 클릭 시 닫기
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (showServerDropdown && !(event.target as Element).closest('.server-dropdown')) {
+        setShowServerDropdown(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [showServerDropdown]);
+
   const connectToMCP = async (role: Role) => {
     console.log(`[DEBUG] Starting MCP connection for role: ${role.name}`);
     setIsMCPConnecting(true);
@@ -144,19 +201,63 @@ export default function Chat() {
     
     try {
       console.log(`[DEBUG] Role MCP Config:`, JSON.stringify(role.mcpConfig, null, 2));
-      console.log(`[DEBUG] Number of servers in config: ${role.mcpConfig.servers?.length || 0}`);
       
-      // 각 서버의 연결 상태 추적
-      if (role.mcpConfig.servers) {
-        for (const server of role.mcpConfig.servers) {
-          serverStatus[server.name] = false;
-        }
-        setMcpServerStatus(serverStatus);
+      // 서버 개수 계산 (Claude 형식과 기존 형식 모두 지원)
+      const claudeServersCount = role.mcpConfig.mcpServers ? Object.keys(role.mcpConfig.mcpServers).length : 0;
+      const legacyServersCount = role.mcpConfig.servers?.length || 0;
+      console.log(`[DEBUG] Number of servers in config: Claude: ${claudeServersCount}, Legacy: ${legacyServersCount}`);
+      
+      // 각 서버의 연결 상태 추적 (중복 제거)
+      const allServerNames = new Set<string>();
+      
+      if (role.mcpConfig.mcpServers) {
+        Object.keys(role.mcpConfig.mcpServers).forEach(name => allServerNames.add(name));
       }
+      if (role.mcpConfig.servers) {
+        role.mcpConfig.servers.forEach(server => allServerNames.add(server.name));
+      }
+      
+      // 모든 서버를 false로 초기화
+      allServerNames.forEach(name => {
+        serverStatus[name] = false;
+      });
+      setMcpServerStatus(serverStatus);
       
       // Tauri MCP 클라이언트로 연결
       console.log(`[DEBUG] Calling tauriMCPClient.listToolsFromConfig...`);
-      const tools = await tauriMCPClient.listToolsFromConfig(role.mcpConfig);
+      
+      // 설정을 Tauri 클라이언트가 예상하는 형식으로 변환 (중복 제거)
+      let configForTauri = { servers: [] as any[] };
+      const serverMap = new Map();
+      
+      // Claude 형식 변환 (우선순위 높음)
+      if (role.mcpConfig.mcpServers) {
+        Object.entries(role.mcpConfig.mcpServers).forEach(([name, config]: [string, any]) => {
+          serverMap.set(name, {
+            name,
+            command: config.command,
+            args: config.args || [],
+            env: config.env || {},
+            transport: 'stdio' as const
+          });
+        });
+      }
+      
+      // 기존 형식 추가 (Claude 형식에 없는 것만)
+      if (role.mcpConfig.servers && Array.isArray(role.mcpConfig.servers)) {
+        role.mcpConfig.servers.forEach(server => {
+          if (!serverMap.has(server.name)) {
+            serverMap.set(server.name, server);
+          }
+        });
+      }
+      
+      // Map을 배열로 변환
+      configForTauri.servers = Array.from(serverMap.values());
+      
+      console.log(`[DEBUG] Final config for Tauri (deduplicated):`, JSON.stringify(configForTauri, null, 2));
+      
+      const tools = await tauriMCPClient.listToolsFromConfig(configForTauri);
       console.log(`[DEBUG] Received tools from Tauri:`, tools);
       
       // 연결된 서버들 확인하고 상태 업데이트
@@ -339,7 +440,10 @@ export default function Chat() {
   if (!isInitialized) {
     return (
       <div className="h-screen w-screen bg-black text-green-400 font-mono flex items-center justify-center">
-        <div className="text-xl">Initializing MCP Agent...</div>
+        <div className="flex items-center gap-3">
+          <LoadingSpinner size="lg" />
+          <div className="text-xl">Initializing MCP Agent...</div>
+        </div>
       </div>
     );
   }
@@ -377,16 +481,51 @@ export default function Chat() {
             
             {/* MCP Server Status */}
             {Object.keys(mcpServerStatus).length > 0 && (
-              <div className="flex items-center gap-1 ml-2">
-                {Object.entries(mcpServerStatus).map(([serverName, isConnected]) => (
-                  <div
-                    key={serverName}
-                    className={`w-2 h-2 rounded-full ${
-                      isConnected ? 'bg-green-400' : 'bg-red-400'
-                    }`}
-                    title={`${serverName}: ${isConnected ? 'Connected' : 'Disconnected'}`}
-                  />
-                ))}
+              <div className="relative server-dropdown">
+                <StatusIndicator 
+                  status={(() => {
+                    const { status } = getMCPStatus();
+                    switch(status) {
+                      case 'all': return 'connected';
+                      case 'partial': return 'unknown';
+                      case 'none': return 'disconnected';
+                      default: return 'unknown';
+                    }
+                  })()}
+                  label={getStatusText()}
+                  showLabel={false}
+                />
+                <button
+                  onClick={() => setShowServerDropdown(!showServerDropdown)}
+                  className="absolute inset-0 cursor-pointer"
+                  title={getStatusText()}
+                />
+                
+                {/* Server Status Dropdown */}
+                {showServerDropdown && (
+                  <div className="absolute top-full right-0 mt-2 bg-gray-800 border border-gray-600 rounded-lg shadow-lg p-3 min-w-[250px] z-50">
+                    <div className="text-xs text-gray-400 mb-2 font-medium">MCP Server Status</div>
+                    <div className="space-y-2">
+                      {Object.entries(mcpServerStatus).map(([serverName, isConnected]) => (
+                        <div key={serverName} className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <StatusIndicator 
+                              status={isConnected ? 'connected' : 'disconnected'}
+                              size="sm"
+                            />
+                            <span className="text-xs text-gray-300">{serverName}</span>
+                          </div>
+                          <Badge variant={isConnected ? 'success' : 'error'} size="sm">
+                            {isConnected ? 'OK' : 'NOK'}
+                          </Badge>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="mt-2 pt-2 border-t border-gray-700">
+                      <div className="text-xs text-gray-500">{getStatusText()}</div>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
             
@@ -398,31 +537,36 @@ export default function Chat() {
       </div>
 
       {/* Mode Switcher */}
-      <div className="bg-gray-950 px-4 py-2 border-b border-gray-700 flex gap-3">
-        <button 
-          onClick={() => setMode('chat')} 
-          className={`px-2 py-1 text-sm transition-colors ${
-            mode === 'chat' ? 'text-green-400' : 'text-gray-500 hover:text-gray-300'
-          }`}
-        >
-          [chat]
-        </button>
-        <button 
-          onClick={() => setMode('agent')} 
-          className={`px-2 py-1 text-sm transition-colors ${
-            mode === 'agent' ? 'text-green-400' : 'text-gray-500 hover:text-gray-300'
-          }`}
-        >
-          [agent]
-        </button>
-        {mode === 'agent' && (
-          <button 
-            onClick={() => setShowRoleManager(true)}
-            className="px-2 py-1 text-sm text-blue-400 hover:text-blue-300 transition-colors"
-          >
-            [manage-roles]
-          </button>
-        )}
+      <div className="bg-gray-950 px-4 py-2 border-b border-gray-700">
+        <Tabs value={mode} onValueChange={setMode}>
+          <div className="flex justify-between items-center">
+            <TabsList>
+              <TabsTrigger 
+                value="chat" 
+                onClick={() => setMode('chat')}
+                isActive={mode === 'chat'}
+              >
+                [chat]
+              </TabsTrigger>
+              <TabsTrigger 
+                value="agent" 
+                onClick={() => setMode('agent')}
+                isActive={mode === 'agent'}
+              >
+                [agent]
+              </TabsTrigger>
+            </TabsList>
+            {mode === 'agent' && (
+              <Button 
+                size="sm"
+                variant="ghost"
+                onClick={() => setShowRoleManager(true)}
+              >
+                [manage-roles]
+              </Button>
+            )}
+          </div>
+        </Tabs>
       </div>
 
       {/* Messages */}
@@ -480,24 +624,6 @@ export default function Chat() {
         {/* 스크롤 마커 */}
         <div ref={messagesEndRef} />
       </div>
-
-      {/* Attached Files Display */}
-      {mode === 'agent' && attachedFiles.length > 0 && (
-        <div className="bg-gray-950 px-4 py-2 border-t border-gray-700">
-          <div className="text-xs text-gray-500 mb-2">📎 Attached Files:</div>
-          {attachedFiles.map((file, index) => (
-            <div key={index} className="flex items-center justify-between bg-gray-900 px-2 py-1 rounded border border-gray-700 mb-1">
-              <span className="text-xs text-gray-300">📄 {file.name}</span>
-              <button
-                onClick={() => removeAttachedFile(index)}
-                className="text-red-400 hover:text-red-300 text-xs px-1"
-              >
-                ✕
-              </button>
-            </div>
-          ))}
-        </div>
-      )}
 
       {/* Role Manager Modal */}
       {showRoleManager && (
@@ -568,45 +694,67 @@ export default function Chat() {
         </div>
       )}
 
+      {/* Attached Files Display */}
+      {mode === 'agent' && attachedFiles.length > 0 && (
+        <div className="bg-gray-950 px-4 py-2 border-t border-gray-700">
+          <div className="text-xs text-gray-500 mb-2">📎 Attached Files:</div>
+          <div className="flex flex-wrap gap-2">
+            {attachedFiles.map((file, index) => (
+              <div key={index} className="flex items-center bg-gray-900 px-2 py-1 rounded border border-gray-700">
+                <span className="text-xs text-green-400 truncate max-w-[150px]">{file.name}</span>
+                <button
+                  type="button"
+                  onClick={() => removeAttachedFile(index)}
+                  className="text-red-400 hover:text-red-300 ml-2 text-xs"
+                >
+                  ✕
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Input Area */}
       <form 
         onSubmit={mode === 'chat' ? handleSubmit : handleAgentSubmit} 
         className="bg-gray-950 px-4 py-4 border-t border-gray-700 flex items-center gap-2"
       >
-        <span className="text-green-400 font-bold">$ </span>
-        <input
-          value={mode === 'chat' ? input : agentInput}
-          onChange={mode === 'chat' ? handleInputChange : handleAgentInputChange}
-          placeholder={mode === 'chat' ? 
-            (isLoading ? "processing..." : "enter command...") : 
-            (isAgentLoading ? "agent busy..." : "query agent...")
-          }
-          disabled={mode === 'chat' ? isLoading : isAgentLoading}
-          className="flex-1 bg-gray-800 border border-gray-600 rounded px-3 py-2 outline-none text-green-400 placeholder-gray-600 caret-green-400 focus:border-green-400"
-          autoComplete="off"
-          spellCheck="false"
-        />
-        
-        {mode === 'agent' && (
-          <label className="cursor-pointer px-2 text-gray-500 hover:text-green-400 transition-colors">
-            📎
-            <input
-              type="file"
-              multiple
-              onChange={handleFileAttachment}
-              className="hidden"
-              accept=".txt,.md,.json,.js,.ts,.tsx,.jsx,.py,.java,.cpp,.c,.h,.css,.html,.xml,.yaml,.yml,.csv"
+        <span className="text-green-400 font-bold flex-shrink-0">$ </span>
+        <div className="flex-1 flex items-center gap-2 min-w-0">
+          <Input
+            variant="terminal"
+            value={mode === 'chat' ? input : agentInput}
+            onChange={mode === 'chat' ? handleInputChange : handleAgentInputChange}
+            placeholder={mode === 'chat' ? 
+              (isLoading ? "processing..." : "enter command...") : 
+              (isAgentLoading ? "agent busy..." : "query agent...")
+            }
+            disabled={mode === 'chat' ? isLoading : isAgentLoading}
+            className="flex-1 caret-green-400 min-w-0"
+            autoComplete="off"
+            spellCheck="false"
+          />
+          
+          {mode === 'agent' && (
+            <FileAttachment 
+              files={attachedFiles}
+              onRemove={removeAttachedFile}
+              onAdd={handleFileAttachment}
+              compact={true}
             />
-          </label>
-        )}
+          )}
+        </div>
         
-        <button 
+        <Button 
           type="submit" 
           disabled={mode === 'chat' ? isLoading : isAgentLoading}
-          className="text-gray-500 hover:text-green-400 transition-colors disabled:opacity-30 disabled:cursor-not-allowed px-1"
+          variant="ghost"
+          size="sm"
+          className="px-1"
         >
           ⏎
-        </button>
+        </Button>
       </form>
     </div>
   );
