@@ -7,3 +7,5 @@ export { default as Badge } from './Badge';
 export { Tabs, TabsList, TabsTrigger, TabsContent } from './Tabs';
 export { default as FileAttachment } from './FileAttachment';
 export { default as LoadingSpinner } from './LoadingSpinner';
+export { default as Dropdown } from './Dropdown';
+export { default as ModelPicker } from './ModelPicker';

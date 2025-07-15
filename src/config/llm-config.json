@@ -1,0 +1,231 @@
+{
+  "providers": {
+    "openai": {
+      "name": "OpenAI",
+      "apiKeyEnvVar": "OPENAI_API_KEY",
+      "baseUrl": "https://api.openai.com/v1",
+      "models": {
+        "gpt-4o": {
+          "name": "GPT-4o",
+          "contextWindow": 128000,
+          "supportReasoning": true,
+          "supportTools": true,
+          "supportStreaming": true,
+          "cost": {
+            "input": 0.0025,
+            "output": 0.01
+          },
+          "description": "Most capable GPT-4 model with enhanced reasoning"
+        },
+        "gpt-4o-mini": {
+          "name": "GPT-4o Mini",
+          "contextWindow": 128000,
+          "supportReasoning": true,
+          "supportTools": true,
+          "supportStreaming": true,
+          "cost": {
+            "input": 0.00015,
+            "output": 0.0006
+          },
+          "description": "Affordable and intelligent small model"
+        },
+        "gpt-4-turbo": {
+          "name": "GPT-4 Turbo",
+          "contextWindow": 128000,
+          "supportReasoning": true,
+          "supportTools": true,
+          "supportStreaming": true,
+          "cost": {
+            "input": 0.01,
+            "output": 0.03
+          },
+          "description": "Latest GPT-4 Turbo model"
+        }
+      }
+    },
+    "anthropic": {
+      "name": "Anthropic",
+      "apiKeyEnvVar": "ANTHROPIC_API_KEY",
+      "baseUrl": "https://api.anthropic.com",
+      "models": {
+        "claude-3-5-sonnet-20241022": {
+          "name": "Claude 3.5 Sonnet",
+          "contextWindow": 200000,
+          "supportReasoning": true,
+          "supportTools": true,
+          "supportStreaming": true,
+          "cost": {
+            "input": 0.003,
+            "output": 0.015
+          },
+          "description": "Most intelligent Claude model"
+        },
+        "claude-3-5-haiku-20241022": {
+          "name": "Claude 3.5 Haiku",
+          "contextWindow": 200000,
+          "supportReasoning": true,
+          "supportTools": true,
+          "supportStreaming": true,
+          "cost": {
+            "input": 0.0008,
+            "output": 0.004
+          },
+          "description": "Fastest Claude model"
+        },
+        "claude-3-opus-20240229": {
+          "name": "Claude 3 Opus",
+          "contextWindow": 200000,
+          "supportReasoning": true,
+          "supportTools": true,
+          "supportStreaming": true,
+          "cost": {
+            "input": 0.015,
+            "output": 0.075
+          },
+          "description": "Most powerful Claude model"
+        }
+      }
+    },
+    "groq": {
+      "name": "Groq",
+      "apiKeyEnvVar": "GROQ_API_KEY",
+      "baseUrl": "https://api.groq.com/openai/v1",
+      "models": {
+        "llama-3.3-70b-versatile": {
+          "name": "Llama 3.3 70B Versatile",
+          "contextWindow": 128000,
+          "supportReasoning": true,
+          "supportTools": true,
+          "supportStreaming": true,
+          "cost": {
+            "input": 0.00059,
+            "output": 0.00079
+          },
+          "description": "Latest Llama model optimized for versatile tasks"
+        },
+        "llama-3.1-70b-versatile": {
+          "name": "Llama 3.1 70B Versatile",
+          "contextWindow": 128000,
+          "supportReasoning": true,
+          "supportTools": true,
+          "supportStreaming": true,
+          "cost": {
+            "input": 0.00059,
+            "output": 0.00079
+          },
+          "description": "High-performance Llama model"
+        },
+        "qwen/qwen-32b": {
+          "name": "Qwen3 32B",
+          "contextWindow": 32768,
+          "supportReasoning": true,
+          "supportTools": false,
+          "supportStreaming": true,
+          "cost": {
+            "input": 0.0008,
+            "output": 0.0008
+          },
+          "description": "Qwen reasoning model with strong problem-solving capabilities"
+        },
+        "mixtral-8x7b-32768": {
+          "name": "Mixtral 8x7B",
+          "contextWindow": 32768,
+          "supportReasoning": true,
+          "supportTools": true,
+          "supportStreaming": true,
+          "cost": {
+            "input": 0.00024,
+            "output": 0.00024
+          },
+          "description": "Mixture of experts model"
+        }
+      }
+    },
+    "google": {
+      "name": "Google",
+      "apiKeyEnvVar": "GOOGLE_API_KEY",
+      "baseUrl": "https://generativelanguage.googleapis.com/v1beta",
+      "models": {
+        "gemini-1.5-pro": {
+          "name": "Gemini 1.5 Pro",
+          "contextWindow": 2097152,
+          "supportReasoning": true,
+          "supportTools": true,
+          "supportStreaming": true,
+          "cost": {
+            "input": 0.00125,
+            "output": 0.005
+          },
+          "description": "Google's most capable multimodal model"
+        },
+        "gemini-1.5-flash": {
+          "name": "Gemini 1.5 Flash",
+          "contextWindow": 1048576,
+          "supportReasoning": true,
+          "supportTools": true,
+          "supportStreaming": true,
+          "cost": {
+            "input": 0.000075,
+            "output": 0.0003
+          },
+          "description": "Fast and efficient Gemini model"
+        }
+      }
+    }
+  },
+  "serviceConfigs": {
+    "default": {
+      "provider": "groq",
+      "model": "llama-3.3-70b-versatile",
+      "temperature": 0.7,
+      "maxTokens": 4096,
+      "topP": 1.0,
+      "frequencyPenalty": 0.0,
+      "presencePenalty": 0.0
+    },
+    "reasoning": {
+      "provider": "groq",
+      "model": "qwen/qwen3-32b",
+      "temperature": 0.3,
+      "maxTokens": 8192,
+      "topP": 0.9,
+      "frequencyPenalty": 0.0,
+      "presencePenalty": 0.0
+    },
+    "creative": {
+      "provider": "anthropic",
+      "model": "claude-3-5-sonnet-20241022",
+      "temperature": 0.9,
+      "maxTokens": 4096,
+      "topP": 1.0,
+      "frequencyPenalty": 0.1,
+      "presencePenalty": 0.1
+    },
+    "fast": {
+      "provider": "groq",
+      "model": "mixtral-8x7b-32768",
+      "temperature": 0.5,
+      "maxTokens": 2048,
+      "topP": 0.95,
+      "frequencyPenalty": 0.0,
+      "presencePenalty": 0.0
+    },
+    "analysis": {
+      "provider": "openai",
+      "model": "gpt-4o",
+      "temperature": 0.1,
+      "maxTokens": 4096,
+      "topP": 0.8,
+      "frequencyPenalty": 0.0,
+      "presencePenalty": 0.0
+    }
+  },
+  "preferences": {
+    "defaultService": "default",
+    "fallbackService": "fast",
+    "retryAttempts": 3,
+    "timeoutMs": 30000,
+    "enableCaching": true,
+    "enableLogging": true
+  }
+}

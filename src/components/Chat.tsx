@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
-import { mcpDB, Role } from '../lib/db';
+import { mcpDB, Role, LLMSettings } from '../lib/db';
 import { tauriMCPClient, MCPTool } from '../lib/tauri-mcp-client';
-import { getAIService, StreamableMessage } from '../lib/ai-service-simple';
+import { getAIService, StreamableMessage } from '../lib/ai-service-minimal';
 import RoleManager from './RoleManager';
 import { 
   Button, 
@@ -12,7 +12,8 @@ import {
   Tabs,
   TabsList,
   TabsTrigger,
-  Input
+  Input,
+  ModelPicker
 } from './ui';
 
 interface MessageWithAttachments {
@@ -29,6 +30,11 @@ export default function Chat() {
   const [currentRole, setCurrentRole] = useState<Role | null>(null);
   const [showRoleManager, setShowRoleManager] = useState(false);
   const [showToolsDetail, setShowToolsDetail] = useState(false);
+  
+  // Model selection state
+  const [selectedProvider, setSelectedProvider] = useState<string>('');
+  const [selectedModel, setSelectedModel] = useState<string>('');
+  
   const [agentMessages, setAgentMessages] = useState<MessageWithAttachments[]>([]);
   const [agentInput, setAgentInput] = useState('');
   const [isAgentLoading, setIsAgentLoading] = useState(false);
@@ -38,6 +44,7 @@ export default function Chat() {
   const [isMCPConnecting, setIsMCPConnecting] = useState(false);
   const [mcpServerStatus, setMcpServerStatus] = useState<Record<string, boolean>>({});
   const [showServerDropdown, setShowServerDropdown] = useState(false);
+  
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -139,7 +146,7 @@ export default function Chat() {
       console.error('Error sending message:', error);
       const errorResponse: MessageWithAttachments = {
         id: (Date.now() + 1).toString(),
-        content: `오류가 발생했습니다: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        content: `오류가 발생했습니다: ${error instanceof Error ? error.message : 'Unknown error'}`, 
         role: 'assistant',
       };
       setMessages(prev => [...prev, errorResponse]);
@@ -163,6 +170,14 @@ export default function Chat() {
           setCurrentRole(defaultRole);
           await connectToMCP(defaultRole);
         }
+
+        // Load LLM settings from DB
+        const savedLLMSettings = await mcpDB.getSetting<LLMSettings>('llm');
+        if (savedLLMSettings) {
+          setSelectedProvider(savedLLMSettings.provider);
+          setSelectedModel(savedLLMSettings.model);
+        }
+
         setIsInitialized(true);
       } catch (error) {
         console.error('Error initializing app:', error);
@@ -400,7 +415,7 @@ export default function Chat() {
       console.error('Error sending agent message:', error);
       const errorResponse: MessageWithAttachments = {
         id: (Date.now() + 1).toString(),
-        content: `오류가 발생했습니다: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        content: `오류가 발생했습니다: ${error instanceof Error ? error.message : 'Unknown error'}`, 
         role: 'assistant',
       };
       setAgentMessages(prev => [...prev, errorResponse]);
@@ -526,17 +541,30 @@ export default function Chat() {
                 [agent]
               </TabsTrigger>
             </TabsList>
-            {mode === 'agent' && (
-              <Button 
-                size="sm"
-                variant="ghost"
-                onClick={() => setShowRoleManager(true)}
-              >
-                [manage-roles]
-              </Button>
-            )}
+            <div className="flex items-center gap-2">
+              {mode === 'agent' && (
+                <Button 
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => setShowRoleManager(true)}
+                >
+                  [manage-roles]
+                </Button>
+              )}
+            </div>
           </div>
         </Tabs>
+      </div>
+
+      {/* ModelPicker를 input 위에 항상 inline으로 배치 */}
+      <div className="bg-gray-950 px-4 py-3 border-b border-gray-700">
+        <ModelPicker
+          selectedProvider={selectedProvider}
+          selectedModel={selectedModel}
+          onProviderChange={setSelectedProvider}
+          onModelChange={setSelectedModel}
+          className=""
+        />
       </div>
 
       {/* Messages */}

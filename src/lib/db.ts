@@ -28,12 +28,17 @@ export interface Conversation {
   updatedAt: Date;
 }
 
+export interface LLMSettings {
+  provider: string;
+  model: string;
+}
+
 class MCPDatabase {
   private db: IDBDatabase | null = null;
   
   async init(): Promise<void> {
     return new Promise<void>((resolve, reject) => {
-      const request = indexedDB.open('MCPAgent', 1);
+      const request = indexedDB.open('MCPAgent', 2);
       
       request.onerror = () => reject(request.error);
       request.onsuccess = () => {
@@ -56,6 +61,11 @@ class MCPDatabase {
           const convStore = db.createObjectStore('conversations', { keyPath: 'id' });
           convStore.createIndex('roleId', 'roleId');
           convStore.createIndex('createdAt', 'createdAt');
+        }
+
+        // Settings store
+        if (!db.objectStoreNames.contains('settings')) {
+          db.createObjectStore('settings', { keyPath: 'key' });
         }
       };
     });
@@ -153,6 +163,38 @@ class MCPDatabase {
       const request = index.getAll(roleId);
       
       request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+  }
+
+  async saveSetting(key: string, value: any): Promise<void> {
+    if (!this.db) throw new Error('Database not initialized');
+    
+    return new Promise((resolve, reject) => {
+      const transaction = this.db!.transaction(['settings'], 'readwrite');
+      const store = transaction.objectStore('settings');
+      const request = store.put({ key, value });
+      
+      request.onsuccess = () => resolve();
+      request.onerror = () => reject(request.error);
+    });
+  }
+
+  async getSetting<T>(key: string): Promise<T | null> {
+    if (!this.db) throw new Error('Database not initialized');
+    
+    return new Promise((resolve, reject) => {
+      const transaction = this.db!.transaction(['settings'], 'readonly');
+      const store = transaction.objectStore('settings');
+      const request = store.get(key);
+      
+      request.onsuccess = () => {
+        if (request.result) {
+          resolve(request.result.value as T);
+        } else {
+          resolve(null);
+        }
+      };
       request.onerror = () => reject(request.error);
     });
   }
