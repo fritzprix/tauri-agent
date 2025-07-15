@@ -9,6 +9,8 @@ import OpenAI from "openai";
 import Anthropic from "@anthropic-ai/sdk";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { MCPTool } from "./tauri-mcp-client";
+import { llmConfigManager, LLMServiceConfig } from "./llm-config-manager";
+import { configManager } from "./config";
 
 // Helper to convert MCPTool to Groq/OpenAI tool format
 function convertMCPToolsToGroqOpenAITools(mcpTools: MCPTool[]): any[] {
@@ -110,6 +112,33 @@ export class GroqService implements IAIService {
         yield chunk.choices[0]?.delta?.content || "";
       }
     }
+  }
+}
+
+let aiServiceInstance: IAIService | null = null;
+
+export function getAIService(provider?: string, model?: string): IAIService {
+  const config = llmConfigManager.getConfig(provider, model);
+  if (!config) {
+    throw new Error(`Unsupported provider or model: ${provider}/${model}`);
+  }
+
+  const apiKey = configManager.getApiKey(config.provider);
+  if (!apiKey) {
+    throw new Error(`${config.provider} API key not found.`);
+  }
+
+  switch (config.provider) {
+    case "groq":
+      return new GroqService(apiKey);
+    case "openai":
+      return new OpenAIService(apiKey);
+    case "anthropic":
+      return new AnthropicService(apiKey);
+    case "gemini":
+      return new GeminiService(apiKey);
+    default:
+      throw new Error(`Unsupported provider: ${config.provider}`);
   }
 }
 

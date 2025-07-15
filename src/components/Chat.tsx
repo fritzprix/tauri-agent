@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { mcpDB, Role, LLMSettings } from '../lib/db';
 import { tauriMCPClient, MCPTool } from '../lib/tauri-mcp-client';
-import { getAIService, StreamableMessage } from '../lib/ai-service-minimal';
+import { getAIService, StreamableMessage } from '../lib/ai-service';
 import RoleManager from './RoleManager';
 import { 
   Button, 
@@ -103,7 +103,7 @@ export default function Chat() {
     setIsLoading(true);
     
     try {
-      const aiService = getAIService();
+      const aiService = getAIService(selectedProvider, selectedModel);
       const conversationHistory: StreamableMessage[] = [...messages, newMessage].map(msg => ({
         id: msg.id,
         content: msg.content,
@@ -364,7 +364,7 @@ export default function Chat() {
     setIsAgentLoading(true);
 
     try {
-      const aiService = getAIService();
+      const aiService = getAIService(selectedProvider, selectedModel);
       
       // System prompt 생성
       let systemPrompt = currentRole.systemPrompt || "You are a helpful AI assistant.";
@@ -392,25 +392,68 @@ export default function Chat() {
 
       // 스트리밍 응답 처리
       for await (const chunk of aiService.streamChat(conversationHistory, systemPrompt, availableTools)) {
-        fullResponse += chunk;
-        setAgentMessages(prev => 
-          prev.map(msg => 
-            msg.id === responseId 
-              ? { ...msg, content: fullResponse, isStreaming: true }
-              : msg
-          )
-        );
+        try {
+          const toolCallData = JSON.parse(chunk);
+          if (toolCallData.tool_calls) {
+            const toolCall = toolCallData.tool_calls[0];
+            const toolName = toolCall.function.name;
+            const toolArgs = JSON.parse(toolCall.function.arguments);
+
+            // Update UI to show tool call
+            setAgentMessages(prev =>
+              prev.map(msg =>
+                msg.id === responseId
+                  ? { ...msg, thinking: `Using tool: ${toolName}` }
+                  : msg
+              )
+            );
+
+            // Execute the tool
+            const toolResult = await tauriMCPClient.callTool(availableTools.find(t => t.name === toolName)!.server_name, toolName, toolArgs);
+
+            // Send tool result back to AI
+            const toolResultMessage: StreamableMessage = {
+              id: Date.now().toString(),
+              role: 'tool',
+              content: JSON.stringify(toolResult),
+              tool_calls: [toolCall],
+            };
+
+            const newConversationHistory = [...conversationHistory, { id: responseId, role: 'assistant', content: '' }, toolResultMessage];
+            const finalResponseGenerator = aiService.streamChat(newConversationHistory, systemPrompt, availableTools);
+
+            for await (const finalChunk of finalResponseGenerator) {
+              fullResponse += finalChunk;
+              setAgentMessages(prev =>
+                prev.map(msg =>
+                  msg.id === responseId
+                    ? { ...msg, content: fullResponse, isStreaming: true, thinking: undefined }
+                    : msg
+                )
+              );
+            }
+          }
+        } catch (e) {
+          // Not a tool call, just a regular message chunk
+          fullResponse += chunk;
+          setAgentMessages(prev =>
+            prev.map(msg =>
+              msg.id === responseId
+                ? { ...msg, content: fullResponse, isStreaming: true }
+                : msg
+            )
+          );
+        }
       }
 
       // 스트리밍 완료
-      setAgentMessages(prev => 
-        prev.map(msg => 
-          msg.id === responseId 
+      setAgentMessages(prev =>
+        prev.map(msg =>
+          msg.id === responseId
             ? { ...msg, isStreaming: false }
             : msg
         )
       );
-
     } catch (error) {
       console.error('Error sending agent message:', error);
       const errorResponse: MessageWithAttachments = {
