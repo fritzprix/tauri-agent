@@ -47,3 +47,19 @@ html, body {
 .terminal-scrollbar::-webkit-scrollbar-corner {
   background: #111827;
 }
+
+/* Input placeholder styles */
+input::placeholder {
+  color: #4b5563 !important;
+  opacity: 1;
+}
+
+input:focus::placeholder {
+  color: #6b7280 !important;
+}
+
+/* Terminal variant placeholder */
+.terminal-input::placeholder {
+  color: #4b5563 !important;
+  opacity: 0.8;
+}

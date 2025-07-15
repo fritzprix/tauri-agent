@@ -690,7 +690,7 @@ export default function Chat() {
         onSubmit={mode === 'chat' ? handleSubmit : handleAgentSubmit} 
         className="bg-gray-950 px-4 py-4 border-t border-gray-700 flex items-center gap-2"
       >
-        <span className="text-green-400 font-bold flex-shrink-0">$ </span>
+        <span className="text-green-400 font-bold flex-shrink-0">$</span>
         <div className="flex-1 flex items-center gap-2 min-w-0">
           <Input
             variant="terminal"
