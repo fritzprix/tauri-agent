@@ -115,7 +115,7 @@
           },
           "description": "High-performance Llama model"
         },
-        "qwen/qwen-32b": {
+        "qwen/qwen3-32b": {
           "name": "Qwen3 32B",
           "contextWindow": 32768,
           "supportReasoning": true,

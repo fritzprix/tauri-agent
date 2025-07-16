@@ -1,6 +1,7 @@
 import llmConfig from '../config/llm-config.json';
 
 export interface ModelInfo {
+  id?: string;
   name: string;
   contextWindow: number;
   supportReasoning: boolean;

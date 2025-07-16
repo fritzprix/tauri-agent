@@ -27,11 +27,40 @@ fn default_transport() -> String {
     "stdio".to_string()
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MCPToolInputSchema {
+    #[serde(rename = "type")]
+    pub schema_type: String,
+    pub properties: serde_json::Map<String, serde_json::Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub required: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
+    // Allow additional fields for flexibility
+    #[serde(flatten)]
+    pub additional_properties: serde_json::Map<String, serde_json::Value>,
+}
+
+impl Default for MCPToolInputSchema {
+    fn default() -> Self {
+        Self {
+            schema_type: "object".to_string(),
+            properties: serde_json::Map::new(),
+            required: None,
+            description: None,
+            title: None,
+            additional_properties: serde_json::Map::new(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MCPTool {
     pub name: String,
     pub description: String,
-    pub input_schema: serde_json::Value,
+    pub input_schema: MCPToolInputSchema,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -176,30 +205,101 @@ impl MCPServerManager {
         }
     }
 
+    /// Convert JSON schema to structured MCPToolInputSchema
+    fn convert_input_schema(schema: serde_json::Value) -> MCPToolInputSchema {
+        match schema {
+            serde_json::Value::Object(obj) => {
+                let mut input_schema = MCPToolInputSchema::default();
+                
+                // Extract known fields
+                if let Some(schema_type) = obj.get("type") {
+                    if let Some(type_str) = schema_type.as_str() {
+                        input_schema.schema_type = type_str.to_string();
+                    }
+                }
+
+                if let Some(properties) = obj.get("properties") {
+                    if let Some(props_obj) = properties.as_object() {
+                        input_schema.properties = props_obj.clone();
+                    }
+                }
+
+                if let Some(required) = obj.get("required") {
+                    if let Some(req_array) = required.as_array() {
+                        let required_strings: Vec<String> = req_array
+                            .iter()
+                            .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                            .collect();
+                        if !required_strings.is_empty() {
+                            input_schema.required = Some(required_strings);
+                        }
+                    }
+                }
+
+                if let Some(description) = obj.get("description") {
+                    if let Some(desc_str) = description.as_str() {
+                        input_schema.description = Some(desc_str.to_string());
+                    }
+                }
+
+                if let Some(title) = obj.get("title") {
+                    if let Some(title_str) = title.as_str() {
+                        input_schema.title = Some(title_str.to_string());
+                    }
+                }
+
+                // Store any additional properties
+                for (key, value) in obj {
+                    if !matches!(key.as_str(), "type" | "properties" | "required" | "description" | "title") {
+                        input_schema.additional_properties.insert(key, value);
+                    }
+                }
+
+                input_schema
+            }
+            _ => {
+                // If it's not an object, create a default schema
+                println!("Warning: Received non-object schema, using default");
+                MCPToolInputSchema::default()
+            }
+        }
+    }
+
     /// 사용 가능한 도구 목록을 가져옵니다
     pub async fn list_tools(&self, server_name: &str) -> Result<Vec<MCPTool>> {
         let connections = self.connections.lock().await;
 
         if let Some(connection) = connections.get(server_name) {
             println!("Found connection for server: {}", server_name);
-            // RMCP API 사용 - list_all_tools 메서드 사용
+            
             match connection.client.list_all_tools().await {
                 Ok(tools_response) => {
                     println!("Raw tools response: {:?}", tools_response);
                     let mut tools = Vec::new();
 
-                    // tools_response는 이미 Vec<Tool>이므로 직접 iterate
                     for tool in tools_response {
                         println!("Processing tool: {:?}", tool);
-                        tools.push(MCPTool {
+                        
+                        // Convert the input schema to our structured format
+                        let input_schema_value = serde_json::to_value(tool.input_schema)
+                            .unwrap_or_else(|e| {
+                                println!("Warning: Failed to serialize input_schema for tool {}: {}", tool.name, e);
+                                serde_json::Value::Object(serde_json::Map::new())
+                            });
+
+                        let structured_schema = Self::convert_input_schema(input_schema_value);
+
+                        let mcp_tool = MCPTool {
                             name: tool.name.to_string(),
                             description: tool.description.unwrap_or_default().to_string(),
-                            input_schema: serde_json::to_value(tool.input_schema)
-                                .unwrap_or(serde_json::Value::Object(serde_json::Map::new())),
-                        });
+                            input_schema: structured_schema,
+                        };
+
+                        println!("Converted tool: {} with schema type: {}", mcp_tool.name, mcp_tool.input_schema.schema_type);
+                        tools.push(mcp_tool);
                     }
 
-                    println!("Converted {} tools", tools.len());
+                    println!("Successfully converted {} tools", tools.len());
                     Ok(tools)
                 }
                 Err(e) => {
@@ -211,6 +311,33 @@ impl MCPServerManager {
             println!("Server '{}' not found in connections", server_name);
             Err(anyhow::anyhow!("Server '{}' not found", server_name))
         }
+    }
+
+    /// Get tools from all connected servers
+    pub async fn list_all_tools(&self) -> Result<Vec<MCPTool>> {
+        let mut all_tools = Vec::new();
+        let server_names: Vec<String> = {
+            let connections = self.connections.lock().await;
+            connections.keys().cloned().collect()
+        };
+
+        for server_name in server_names {
+            match self.list_tools(&server_name).await {
+                Ok(mut tools) => {
+                    // Prefix tool names with server name to avoid conflicts
+                    for tool in &mut tools {
+                        tool.name = format!("{}:{}", server_name, tool.name);
+                    }
+                    all_tools.extend(tools);
+                }
+                Err(e) => {
+                    println!("Warning: Failed to get tools from server {}: {}", server_name, e);
+                    // Continue with other servers instead of failing completely
+                }
+            }
+        }
+
+        Ok(all_tools)
     }
 
     /// 연결된 서버 목록을 반환합니다
@@ -235,6 +362,54 @@ impl MCPServerManager {
         }
 
         status_map
+    }
+
+    /// Validate if a tool schema is compatible with AI service expectations
+    pub fn validate_tool_schema(tool: &MCPTool) -> Result<()> {
+        // Ensure the schema type is 'object'
+        if tool.input_schema.schema_type != "object" {
+            return Err(anyhow::anyhow!(
+                "Tool '{}' has invalid schema type '{}', expected 'object'",
+                tool.name,
+                tool.input_schema.schema_type
+            ));
+        }
+
+        // Validate required fields exist in properties
+        if let Some(required) = &tool.input_schema.required {
+            for req_field in required {
+                if !tool.input_schema.properties.contains_key(req_field) {
+                    return Err(anyhow::anyhow!(
+                        "Tool '{}' requires field '{}' but it's not defined in properties",
+                        tool.name,
+                        req_field
+                    ));
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Get validated tools that are compatible with the AI service
+    pub async fn get_validated_tools(&self, server_name: &str) -> Result<Vec<MCPTool>> {
+        let tools = self.list_tools(server_name).await?;
+        let mut validated_tools = Vec::new();
+
+        for tool in tools {
+            match Self::validate_tool_schema(&tool) {
+                Ok(()) => {
+                    println!("Tool '{}' passed validation", tool.name);
+                    validated_tools.push(tool);
+                }
+                Err(e) => {
+                    println!("Tool '{}' failed validation: {}", tool.name, e);
+                    // Optionally, you could try to fix the schema or skip the tool
+                }
+            }
+        }
+
+        Ok(validated_tools)
     }
 }
 

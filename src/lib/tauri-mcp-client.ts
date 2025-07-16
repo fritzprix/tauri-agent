@@ -10,10 +10,15 @@ export interface MCPServerConfig {
   port?: number;
 }
 
+
 export interface MCPTool {
   name: string;
   description: string;
-  input_schema: Record<string, unknown>;
+  input_schema: {
+    type: 'object';
+    properties: Record<string, unknown>;
+    required?: string[];
+  };
 }
 
 export interface ToolCallResult {
