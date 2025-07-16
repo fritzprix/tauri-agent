@@ -1,26 +1,29 @@
-import { useState, useEffect, useRef } from 'react';
-import { mcpDB, Role, LLMSettings } from '../lib/db';
-import { tauriMCPClient, MCPTool } from '../lib/tauri-mcp-client';
+import { useEffect, useRef, useState } from 'react';
 import {
+  AIServiceConfig,
+  AIServiceError,
   AIServiceFactory,
   AIServiceProvider,
-  StreamableMessage,
-  AIServiceError,
-  AIServiceConfig
+  StreamableMessage
 } from '../lib/ai-service';
+import { LLMSettings, mcpDB, Role } from '../lib/db';
+import { getLogger } from '../lib/logger';
+import { MCPTool, tauriMCPClient } from '../lib/tauri-mcp-client';
 import RoleManager from './RoleManager';
 import {
-  Button,
-  StatusIndicator,
   Badge,
-  LoadingSpinner,
+  Button,
+  CompactModelPicker,
   FileAttachment,
+  Input,
+  LoadingSpinner,
+  StatusIndicator,
   Tabs,
   TabsList,
   TabsTrigger,
-  Input,
-  CompactModelPicker,
 } from './ui';
+
+const logger = getLogger('Chat');
 
 interface MessageWithAttachments {
   id: string;
@@ -97,7 +100,7 @@ export default function Chat() {
       const llmSettings: LLMSettings = { provider, model };
       await mcpDB.saveSetting('llm', llmSettings);
     } catch (error) {
-      console.error('Error saving LLM settings:', error);
+      logger.error('Error saving LLM settings:', {error});
     }
   };
 
@@ -207,7 +210,7 @@ export default function Chat() {
         )
       );
     } catch (error) {
-      console.error('Error sending message:', error);
+      logger.error('Error sending message:', {error});
 
       let errorMessage = 'Unknown error occurred';
       if (error instanceof AIServiceError) {
@@ -531,7 +534,7 @@ export default function Chat() {
   }
 
   return (
-    <div className="h-[100vh] w-screen bg-black text-green-400 font-mono flex flex-col rounded-lg overflow-hidden shadow-2xl shadow-green-400/30 relative">
+    <div className="h-full w-screen bg-black text-green-400 font-mono flex flex-col rounded-lg overflow-hidden shadow-2xl shadow-green-400/30 relative">
       {/* Terminal Header */}
       <div className="bg-gray-900 px-4 py-3 flex items-center justify-between border-b border-gray-700">
         <div className="flex items-center gap-4">
