@@ -4,6 +4,7 @@ import {
   AIServiceError,
   AIServiceFactory,
   AIServiceProvider,
+  IAIService,
   StreamableMessage
 } from '../lib/ai-service';
 import { LLMSettings, mcpDB, Role } from '../lib/db';
@@ -28,8 +29,8 @@ const logger = getLogger('Chat');
 interface MessageWithAttachments {
   id: string;
   content: string;
-  role: string;
-  thinking?: string;
+  role: 'user' | 'assistant' | 'system' | 'tool';
+  thinking?: string; // Added for displaying thinking state (e.g., tool use)
   isStreaming?: boolean;
   attachments?: { name: string; content: string; }[];
 }
@@ -79,7 +80,7 @@ export default function Chat() {
   };
 
   // Helper function to get AI service instance
-  const getAIService = () => {
+  const getAIService = (): IAIService => {
     if (!selectedProvider) {
       throw new AIServiceError('No AI provider selected', AIServiceProvider.OpenAI);
     }
@@ -168,47 +169,18 @@ export default function Chat() {
 
     try {
       const aiService = getAIService();
-      const conversationHistory: StreamableMessage[] = [...messages, newMessage].map(msg => ({
-        id: msg.id,
-        content: msg.content,
-        role: msg.role as 'user' | 'assistant'
-      }));
 
-      const responseId = (Date.now() + 1).toString();
-      let fullResponse = '';
-
-      // 빈 응답 메시지 추가
-      const initialResponse: MessageWithAttachments = {
-        id: responseId,
-        content: '',
-        role: 'assistant',
-        isStreaming: true
-      };
-      setMessages(prev => [...prev, initialResponse]);
-
-      // 스트리밍 응답 처리 - 새로운 API 사용
-      for await (const chunk of aiService.streamChat(conversationHistory, {
+      await processAIStream({
+        aiService,
+        initialConversation: [...messages, newMessage].map(msg => ({
+          id: msg.id,
+          content: msg.content,
+          role: msg.role as 'user' | 'assistant' | 'system' | 'tool'
+        })),
+        setMessagesState: setMessages,
         modelName: selectedModel || undefined,
-        config: aiServiceConfig
-      })) {
-        fullResponse += chunk;
-        setMessages(prev =>
-          prev.map(msg =>
-            msg.id === responseId
-              ? { ...msg, content: fullResponse, isStreaming: true }
-              : msg
-          )
-        );
-      }
-
-      // 스트리밍 완료
-      setMessages(prev =>
-        prev.map(msg =>
-          msg.id === responseId
-            ? { ...msg, isStreaming: false }
-            : msg
-        )
-      );
+        aiServiceConfig,
+      });
     } catch (error) {
       logger.error('Error sending message:', {error});
 
@@ -258,7 +230,7 @@ export default function Chat() {
 
         setIsInitialized(true);
       } catch (error) {
-        console.error('Error initializing app:', error);
+        logger.error('Error initializing app:', {error});
         setIsInitialized(true);
       }
     };
@@ -286,18 +258,18 @@ export default function Chat() {
   }, [showServerDropdown]);
 
   const connectToMCP = async (role: Role) => {
-    console.log(`[DEBUG] Starting MCP connection for role: ${role.name}`);
+    logger.debug(`Starting MCP connection for role: ${role.name}`);
     setIsMCPConnecting(true);
 
     // 서버 상태 초기화
     const serverStatus: Record<string, boolean> = {};
 
     try {
-      console.log(`[DEBUG] Role MCP Config:`, JSON.stringify(role.mcpConfig, null, 2));
+      logger.debug(`Role MCP Config:`, {config: role.mcpConfig});
 
       // 서버 개수 계산 (Claude 형식만 지원)
       const claudeServersCount = role.mcpConfig.mcpServers ? Object.keys(role.mcpConfig.mcpServers).length : 0;
-      console.log(`[DEBUG] Number of servers in config: ${claudeServersCount}`);
+      logger.debug(`Number of servers in config: ${claudeServersCount}`);
 
       // 각 서버의 연결 상태 추적
       const allServerNames = new Set<string>();
@@ -313,17 +285,17 @@ export default function Chat() {
       setMcpServerStatus(serverStatus);
 
       // Tauri MCP 클라이언트로 연결
-      console.log(`[DEBUG] Calling tauriMCPClient.listToolsFromConfig...`);
+      logger.debug(`Calling tauriMCPClient.listToolsFromConfig...`);
 
       // 설정을 Claude 형식으로 Tauri 클라이언트에 전달
       const configForTauri = {
         mcpServers: role.mcpConfig.mcpServers || {}
       };
 
-      console.log(`[DEBUG] Final config for Tauri (Claude format):`, JSON.stringify(configForTauri, null, 2));
+      logger.debug(`Final config for Tauri (Claude format):`, {config: configForTauri});
 
       const tools = await tauriMCPClient.listToolsFromConfig(configForTauri);
-      console.log(`[DEBUG] Received tools from Tauri:`, tools);
+      logger.debug(`Received tools from Tauri:`, {tools});
 
       // 연결된 서버들 확인하고 상태 업데이트
       const connectedServers = await tauriMCPClient.getConnectedServers();
@@ -335,18 +307,19 @@ export default function Chat() {
       setMcpServerStatus({ ...serverStatus });
 
       setAvailableTools(tools);
-      console.log(`[DEBUG] Total tools loaded: ${tools.length}`);
-      console.log(`[DEBUG] Connected servers:`, connectedServers);
+      logger.debug(`Total tools loaded: ${tools.length}`);
+      logger.debug(`Available tools details:`, {tools});
+      logger.debug(`Connected servers:`, {connectedServers});
 
       if (tools.length > 0) {
         tools.forEach((tool, index) => {
-          console.log(`[DEBUG] Tool ${index + 1}: ${tool.name} - ${tool.description}`);
+          logger.debug(`Tool ${index + 1}: ${tool.name} - ${tool.description}`);
         });
       } else {
-        console.log(`[DEBUG] No tools found!`);
+        logger.debug(`No tools found!`);
       }
     } catch (error) {
-      console.error('[ERROR] Error connecting to MCP:', error);
+      logger.error('Error connecting to MCP:', {error});
       // 에러 발생 시 모든 서버를 연결 실패로 표시
       Object.keys(serverStatus).forEach(key => {
         serverStatus[key] = false;
@@ -358,7 +331,7 @@ export default function Chat() {
   };
 
   const handleRoleSelect = async (role: Role) => {
-    console.log(`[DEBUG] Role selected: ${role.name}`);
+    logger.debug(`Role selected: ${role.name}`);
     setCurrentRole(role);
     await connectToMCP(role);
     setShowRoleManager(false);
@@ -402,7 +375,7 @@ export default function Chat() {
         const content = await file.text();
         newAttachedFiles.push({ name: file.name, content });
       } catch (error) {
-        console.error(`Error reading file ${file.name}:`, error);
+        logger.error(`Error reading file ${file.name}:`, {error});
         alert(`Error reading file "${file.name}".`);
       }
     }
@@ -414,6 +387,162 @@ export default function Chat() {
 
   const removeAttachedFile = (index: number) => {
     setAttachedFiles(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const executeToolCall = async (toolCall: { id: string; type: 'function'; function: { name: string; arguments: string; } }): Promise<{ role: 'tool'; content: string; tool_call_id: string }> => {
+    logger.debug(`Executing tool call:`, {toolCall});
+    const aiProvidedToolName = toolCall.function.name;
+    let serverName: string | undefined;
+    let toolName: string | undefined;
+
+    const parts = aiProvidedToolName.split(':');
+    if (parts.length >= 2) {
+      serverName = parts[0];
+      toolName = parts.slice(1).join(':'); // Rejoin in case toolName itself contains colons
+    }
+
+    if (!serverName || !toolName) {
+      logger.error(`Could not determine serverName or toolName for AI-provided tool name: ${aiProvidedToolName}`);
+      return { role: 'tool', content: `Error: Could not find tool '${aiProvidedToolName}' or determine its server.`, tool_call_id: toolCall.id };
+    }
+
+    logger.debug(`Parsed tool call - serverName: ${serverName}, toolName: ${toolName}`);
+    let toolArguments: Record<string, unknown> = {};
+
+    try {
+      toolArguments = JSON.parse(toolCall.function.arguments);
+    } catch (parseError) {
+      logger.error(`Failed to parse tool arguments for ${toolCall.function.name}:`, {parseError});
+      return { role: 'tool', content: `Error: Invalid tool arguments JSON: ${parseError instanceof Error ? parseError.message : String(parseError)}`, tool_call_id: toolCall.id };
+    }
+
+    try {
+      const result = await tauriMCPClient.callTool(serverName, toolName, toolArguments);
+      logger.debug(`Tool execution result for ${toolCall.function.name}:`, {result});
+      return { role: 'tool', content: JSON.stringify(result), tool_call_id: toolCall.id };
+    } catch (execError) {
+      logger.error(`Tool execution failed for ${toolCall.function.name}:`, {execError});
+      return { role: 'tool', content: `Error: Tool '${toolCall.function.name}' failed: ${execError instanceof Error ? execError.message : String(execError)}`, tool_call_id: toolCall.id };
+    }
+  };
+
+  // New helper function to process AI stream and handle tool calls
+  const processAIStream = async ({
+    aiService,
+    initialConversation,
+    setMessagesState,
+    modelName,
+    systemPrompt,
+    availableTools,
+    aiServiceConfig,
+    isAgentMode = false,
+  }: {
+    aiService: IAIService;
+    initialConversation: StreamableMessage[];
+    setMessagesState: React.Dispatch<React.SetStateAction<MessageWithAttachments[]>>;
+    modelName?: string;
+    systemPrompt?: string;
+    availableTools?: MCPTool[];
+    aiServiceConfig: AIServiceConfig;
+    isAgentMode?: boolean;
+  }) => {
+    let currentConversation: StreamableMessage[] = [...initialConversation];
+    let responseId = (Date.now() + 1).toString();
+    let fullResponse = '';
+    let toolCallsDetected = false;
+
+    // 빈 응답 메시지 추가
+    let initialResponse: MessageWithAttachments = {
+      id: responseId,
+      content: '',
+      role: 'assistant',
+      isStreaming: true
+    };
+    setMessagesState(prev => [...prev, initialResponse]);
+
+    do {
+      toolCallsDetected = false;
+      let currentChunk = '';
+      let isFirstChunk = true;
+
+      for await (const chunk of aiService.streamChat(currentConversation, {
+        modelName,
+        systemPrompt,
+        availableTools,
+        config: aiServiceConfig
+      })) {
+        currentChunk += chunk;
+
+        try {
+          const parsedChunk = JSON.parse(currentChunk);
+          if (parsedChunk.tool_calls && parsedChunk.tool_calls.length > 0) {
+            toolCallsDetected = true;
+            // Update the AI's current streaming message to indicate tool use
+            setMessagesState(prev => prev.map(msg => msg.id === responseId ? { ...msg, content: fullResponse, thinking: `${isAgentMode ? 'Agent' : 'Assistant'} is using tools...` } : msg));
+
+            for (const toolCall of parsedChunk.tool_calls) {
+              const toolResult = await executeToolCall(toolCall);
+              // Add tool result to both UI and conversation history
+              setMessagesState(prev => [...prev, { id: toolResult.tool_call_id, content: toolResult.content, role: toolResult.role as any }]);
+              currentConversation.push({ id: toolResult.tool_call_id, content: toolResult.content, role: toolResult.role as any });
+            }
+            currentChunk = ''; // Reset chunk after processing tool calls
+            break; // Break from inner for-await loop to re-call aiService.streamChat
+          } else {
+            // Regular content chunk
+            if (isFirstChunk) {
+              fullResponse = currentChunk;
+              isFirstChunk = false;
+            } else {
+              fullResponse += chunk;
+            }
+            setMessagesState(prev =>
+              prev.map(msg =>
+                msg.id === responseId
+                  ? { ...msg, content: fullResponse, isStreaming: true }
+                  : msg
+              )
+            );
+          }
+        } catch (parseError) {
+          // If chunk is not JSON (i.e., regular text content or incomplete JSON)
+          if (isFirstChunk) {
+            fullResponse = currentChunk;
+            isFirstChunk = false;
+          } else {
+            fullResponse += chunk;
+          }
+          setMessagesState(prev =>
+            prev.map(msg =>
+              msg.id === responseId
+                ? { ...msg, content: fullResponse, isStreaming: true }
+                : msg
+            )
+          );
+        }
+      }
+
+      // After the inner loop, if no tool calls were detected, the AI's turn is over.
+      // If tool calls were detected, the loop will continue, and a new AI message will be created.
+      if (!toolCallsDetected) {
+        // Finalize the AI's message for this turn
+        setMessagesState(prev =>
+          prev.map(msg =>
+            msg.id === responseId
+              ? { ...msg, isStreaming: false }
+              : msg
+          )
+        );
+        // Add the AI's final text response to the conversation history
+        currentConversation.push({ id: responseId, content: fullResponse, role: 'assistant' });
+      } else {
+        // If tool calls were detected, prepare for the next turn by creating a new AI message ID
+        responseId = (Date.now() + 1).toString();
+        fullResponse = '';
+        setMessagesState(prev => [...prev, { id: responseId, content: '', role: 'assistant', isStreaming: true }]);
+      }
+
+    } while (toolCallsDetected);
   };
 
   const handleAgentSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -445,22 +574,20 @@ export default function Chat() {
       const aiService = getAIService();
 
       // System prompt 생성
-      let systemPrompt = currentRole.systemPrompt || "You are a helpful AI assistant.";
-      if (availableTools.length > 0) {
-        systemPrompt += `\n\nAvailable tools: ${availableTools.map(t => `${t.name}: ${t.description}`).join(', ')}`;
-      }
+      let systemPrompt = currentRole.systemPrompt || "You are a helpful AI assistant.";      if (availableTools.length > 0) {        systemPrompt += `\n\nAvailable tools: ${availableTools.map(t => `${t.name}: ${t.description}`).join(', ')}\nIf a tool call fails, analyze the error message and try to correct your approach.`;      }
 
-      const conversationHistory: StreamableMessage[] = [...agentMessages, userMessage].map(msg => ({
+      let currentConversation: StreamableMessage[] = [...agentMessages, userMessage].map(msg => ({
         id: msg.id,
         content: msg.content,
-        role: msg.role as 'user' | 'assistant'
+        role: msg.role as 'user' | 'assistant' | 'system' | 'tool'
       }));
 
-      const responseId = (Date.now() + 1).toString();
+      let responseId = (Date.now() + 1).toString();
       let fullResponse = '';
+      let toolCallsDetected = false;
 
       // 빈 응답 메시지 추가
-      const initialResponse: MessageWithAttachments = {
+      let initialResponse: MessageWithAttachments = {
         id: responseId,
         content: '',
         role: 'assistant',
@@ -468,22 +595,68 @@ export default function Chat() {
       };
       setAgentMessages(prev => [...prev, initialResponse]);
 
-      // 스트리밍 응답 처리 - 새로운 API 사용
-      for await (const chunk of aiService.streamChat(conversationHistory, {
-        modelName: selectedModel || undefined,
-        systemPrompt,
-        availableTools: availableTools.length > 0 ? availableTools : undefined,
-        config: aiServiceConfig
-      })) {
-        fullResponse += chunk;
-        setAgentMessages(prev =>
-          prev.map(msg =>
-            msg.id === responseId
-              ? { ...msg, content: fullResponse, isStreaming: true }
-              : msg
-          )
-        );
-      }
+      do {
+        toolCallsDetected = false;
+        let currentChunk = '';
+        let isFirstChunk = true;
+
+        for await (const chunk of aiService.streamChat(currentConversation, {
+          modelName: selectedModel || undefined,
+          systemPrompt,
+          availableTools: availableTools.length > 0 ? availableTools : undefined,
+          config: aiServiceConfig
+        })) {
+          currentChunk += chunk;
+
+          try {
+            const parsedChunk = JSON.parse(currentChunk);
+            if (parsedChunk.tool_calls && parsedChunk.tool_calls.length > 0) {
+              toolCallsDetected = true;
+              // Process tool calls
+              for (const toolCall of parsedChunk.tool_calls) {
+                const toolResult = await executeToolCall(toolCall);
+                // Add tool result to messages for context
+                setAgentMessages(prev => [...prev, { id: toolResult.tool_call_id, content: toolResult.content, role: toolResult.role }]);
+                currentConversation.push({ id: toolResult.tool_call_id, content: toolResult.content, role: toolResult.role });
+              }
+              currentChunk = ''; // Reset chunk after processing tool calls
+            } else {
+              // Regular content chunk
+              if (isFirstChunk) {
+                fullResponse = currentChunk;
+                isFirstChunk = false;
+              } else {
+                fullResponse += chunk;
+              }
+              setAgentMessages(prev =>
+                prev.map(msg =>
+                  msg.id === responseId
+                    ? { ...msg, content: fullResponse, isStreaming: true }
+                    : msg
+                )
+              );
+            }
+          } catch (parseError) {
+            // If chunk is not JSON (i.e., regular text content)
+            if (isFirstChunk) {
+              fullResponse = currentChunk;
+              isFirstChunk = false;
+            } else {
+              fullResponse += chunk;
+            }
+            setAgentMessages(prev =>
+              prev.map(msg =>
+                msg.id === responseId
+                  ? { ...msg, content: fullResponse, isStreaming: true }
+                  : msg
+              )
+            );
+          }
+        }
+
+        // If tool calls were detected, the loop will continue with the updated conversation
+        // Otherwise, the AI has finished its response.
+      } while (toolCallsDetected);
 
       // 스트리밍 완료
       setAgentMessages(prev =>
@@ -495,7 +668,7 @@ export default function Chat() {
       );
 
     } catch (error) {
-      console.error('Error sending agent message:', error);
+      logger.error('Error sending agent message:', {error});
 
       let errorMessage = 'Unknown error occurred';
       if (error instanceof AIServiceError) {
@@ -676,6 +849,11 @@ export default function Chat() {
                   {m.role === 'user' ? 'You' : 'Assistant'}
                 </div>
                 <div className="whitespace-pre-wrap text-sm">{m.content}</div>
+                {m.thinking && (
+                  <div className="flex items-center gap-2 mt-2 text-sm text-gray-400">
+                    <LoadingSpinner size="sm" /> {m.thinking}
+                  </div>
+                )}
               </div>
             </div>
           ))
@@ -688,6 +866,11 @@ export default function Chat() {
                   {m.role === 'user' ? 'You' : `Agent (${currentRole?.name})`}
                 </div>
                 <div className="whitespace-pre-wrap text-sm">{m.content}</div>
+                {m.thinking && (
+                  <div className="flex items-center gap-2 mt-2 text-sm text-gray-400">
+                    <LoadingSpinner size="sm" /> {m.thinking}
+                  </div>
+                )}
                 {m.attachments && m.attachments.length > 0 && (
                   <div className="mt-2 text-xs text-gray-400">
                     📎 {m.attachments.length} file(s) attached

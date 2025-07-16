@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { llmConfigManager, ModelInfo, ProviderInfo } from "../lib/llm-config-manager";
 import { AIServiceProvider } from "../lib/ai-service";
-import { Logger } from "../lib/logger";
 
 interface ApiKeyStatus {
     configured: boolean;
@@ -24,7 +23,6 @@ const useModelPickerLogic = (selectedProvider?: string, selectedModel?: string, 
     useEffect(() => {
         try {
             const allProviders = llmConfigManager.getProviders();
-            Logger.debug("loaded providers : ", JSON.stringify({allProviders}))
             setProviders(Object.entries(allProviders).map(([key, info]) => ({ ...info, name: key } satisfies ProviderInfo)));
             setLoading(false);
         } catch (error) { console.error('Failed to load providers:', error); setLoading(false); }
@@ -47,7 +45,6 @@ const useModelPickerLogic = (selectedProvider?: string, selectedModel?: string, 
                 
                 if (availableModels) {
                     setModels(Object.entries(availableModels).map(([key, info]) => ({ ...info, id:key } satisfies ModelInfo)));
-                    Logger.debug("models", JSON.stringify({ availableModels, selectedModel}))
                     if (selectedModel && !availableModels[selectedModel] && onModelChange) {
                         onModelChange('');
                     }
@@ -65,7 +62,6 @@ const useModelPickerLogic = (selectedProvider?: string, selectedModel?: string, 
     const apiKeyStatus: ApiKeyStatus | null = useMemo(() => {
         if (!selectedProviderData) return null;
         try {
-            Logger.debug(`selected key :  ${JSON.stringify({ provider: selectedProviderData.name })}`)
             const hasKey = !!API_KEYS[selectedProviderData.name];
             return { configured: hasKey, text: hasKey ? 'KEY FOUND' : 'KEY MISSING' };
         } catch { return { configured: false, text: 'ERROR' }; }

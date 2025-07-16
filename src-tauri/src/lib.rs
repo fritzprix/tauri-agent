@@ -61,8 +61,8 @@ async fn list_tools_from_config(config: serde_json::Value) -> Result<Vec<mcp::MC
     );
 
     // Claude format을 지원: mcpServers 또는 servers 배열을 처리
-    let servers = if let Some(mcp_servers) = config.get("mcpServers").and_then(|v| v.as_object()) {
-        // Claude format: mcpServers 객체를 servers 배열로 변환
+    let servers_config = if let Some(mcp_servers) = config.get("mcpServers").and_then(|v| v.as_object()) {
+        // Claude format: mcpServers 객체를 MCPServerConfig 배열로 변환
         println!("🚀 [TAURI] Processing Claude format (mcpServers)");
         let mut server_list = Vec::new();
         
@@ -73,82 +73,54 @@ async fn list_tools_from_config(config: serde_json::Value) -> Result<Vec<mcp::MC
                 obj.insert("name".to_string(), serde_json::Value::String(name.clone()));
                 obj.insert("transport".to_string(), serde_json::Value::String("stdio".to_string()));
             }
-            server_list.push(server_value);
+            let server_cfg: mcp::MCPServerConfig = serde_json::from_value(server_value)
+                .map_err(|e| format!("Invalid server config: {}", e))?;
+            server_list.push(server_cfg);
         }
         server_list
     } else if let Some(servers_array) = config.get("servers").and_then(|v| v.as_array()) {
         // 기존 format: servers 배열
         println!("🚀 [TAURI] Processing legacy format (servers array)");
-        servers_array.clone()
+        let mut server_list = Vec::new();
+        for server_value in servers_array {
+            let server_cfg: mcp::MCPServerConfig = serde_json::from_value(server_value.clone())
+                .map_err(|e| format!("Invalid server config: {}", e))?;
+            server_list.push(server_cfg);
+        }
+        server_list
     } else {
         return Err("Invalid config: missing mcpServers object or servers array".to_string());
     };
 
-    println!("🚀 [TAURI] Found {} servers in config", servers.len());
+    println!("🚀 [TAURI] Found {} servers in config", servers_config.len());
 
-    let mut all_tools = Vec::new();
+    let manager = get_mcp_manager();
 
-    for (i, server_value) in servers.iter().enumerate() {
-        println!("🚀 [TAURI] Processing server {}: {:?}", i + 1, server_value);
-
-        // 서버 설정을 파싱
-        let mut server_config: mcp::MCPServerConfig = serde_json::from_value(server_value.clone())
-            .map_err(|e| format!("Invalid server config: {}", e))?;
-
-        // transport가 기본값이고 command가 있으면 더 정확한 값으로 설정
-        if server_config.transport == "stdio" {
-            if let Some(command) = &server_config.command {
-                server_config.transport = match command.as_str() {
-                    "npx" | "node" | "python" | "python3" => "stdio".to_string(),
-                    _ => "stdio".to_string(),
-                };
-            }
-        }
-
-        let server_name = server_config.name.clone();
-        println!(
-            "🚀 [TAURI] Server: {} (command: {:?}, transport: {})",
-            server_name, server_config.command, server_config.transport
-        );
-
-        // 서버가 이미 실행 중인지 확인
-        let manager = get_mcp_manager();
+    // Start all servers from the config
+    for server_cfg in servers_config {
+        let server_name = server_cfg.name.clone();
         if !manager.is_server_alive(&server_name).await {
             println!("🚀 [TAURI] Starting server: {}", server_name);
-            // 서버 시작
-            if let Err(e) = manager.start_server(server_config).await {
+            if let Err(e) = manager.start_server(server_cfg).await {
                 eprintln!("❌ [TAURI] Failed to start server {}: {}", server_name, e);
-                continue;
             }
-
-            // 서버 시작 후 잠시 대기 (초기화를 위해)
             tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
         } else {
             println!("🚀 [TAURI] Server {} already running", server_name);
         }
-
-        // 서버별 도구 목록 가져오기
-        println!("🚀 [TAURI] Getting tools from server: {}", server_name);
-        match manager.list_tools(&server_name).await {
-            Ok(tools) => {
-                println!(
-                    "✅ [TAURI] Got {} tools from server {}",
-                    tools.len(),
-                    server_name
-                );
-                all_tools.extend(tools);
-            }
-            Err(e) => {
-                eprintln!(
-                    "❌ [TAURI] Error getting tools for server {}: {}",
-                    server_name, e
-                );
-            }
-        }
     }
 
-    println!("🚀 [TAURI] Total tools collected: {}", all_tools.len());
-    Ok(all_tools)
+    // Get all tools from all connected servers (which now have prefixed names)
+    match manager.list_all_tools().await {
+        Ok(tools) => {
+            println!("✅ [TAURI] Total tools collected: {}", tools.len());
+            Ok(tools)
+        }
+        Err(e) => {
+            eprintln!("❌ [TAURI] Error listing all tools: {}", e);
+            Err(e.to_string())
+        }
+    }
 }
 
 #[tauri::command]
