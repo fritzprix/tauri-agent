@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { mcpDB, Role } from '../lib/db';
-import { tauriMCPClient } from '../lib/tauri-mcp-client';
+import { tauriMCPClient, type MCPServerConfig } from '../lib/tauri-mcp-client';
 import { 
   Modal, 
   Button, 
@@ -11,6 +11,9 @@ import {
   StatusIndicator, 
   Badge 
 } from './ui';
+import { getLogger } from '../lib/logger';
+
+const logger = getLogger('RoleManager');
 
 interface RoleManagerProps {
   onClose: () => void;
@@ -66,7 +69,7 @@ export default function RoleManager({ onClose, onRoleSelect, onRoleUpdate, curre
       
       setServerStatuses(statuses);
     } catch (error) {
-      console.error('Error checking server statuses:', error);
+      logger.error('Error checking server statuses:', {error});
     } finally {
       setIsCheckingStatus(false);
     }
@@ -77,7 +80,7 @@ export default function RoleManager({ onClose, onRoleSelect, onRoleUpdate, curre
       const allRoles = await mcpDB.getRoles();
       setRoles(allRoles);
     } catch (error) {
-      console.error('Error loading roles:', error);
+      logger.error('Error loading roles:', {error});
     }
   };
 
@@ -119,10 +122,10 @@ export default function RoleManager({ onClose, onRoleSelect, onRoleUpdate, curre
       alert('이름과 시스템 프롬프트는 필수입니다.');
       return;
     }
-    
+    logger.debug(mcpConfigText);
     try {
       const mcpConfig = JSON.parse(mcpConfigText);
-      
+      logger.debug("parsed object :", {mcpConfig});
       // Claude MCP 형식을 내부 형식으로 변환
       let convertedConfig = { ...mcpConfig };
       
@@ -146,12 +149,15 @@ export default function RoleManager({ onClose, onRoleSelect, onRoleUpdate, curre
       await mcpDB.saveRole(role);
       await loadRoles();
       
+      // Start MCP servers
+      await startMCPServers(convertedConfig);
+
       // 서버 상태 체크
       await checkServerStatuses(convertedConfig);
       
       // 현재 편집 중인 역할이 활성 역할인 경우 MCP 재연결
       if (currentRole && role.id === currentRole.id) {
-        console.log('Reconnecting MCP for updated role:', role.name);
+        logger.debug('Reconnecting MCP for updated role:', role.name);
         if (onRoleUpdate) {
           onRoleUpdate(role);
         } else {
@@ -163,10 +169,10 @@ export default function RoleManager({ onClose, onRoleSelect, onRoleUpdate, curre
       setIsCreating(false);
       setMcpConfigText('');
       
-      console.log(`Role "${role.name}" saved successfully`);
+      logger.debug(`Role "${role.name}" saved successfully`);
       setMcpConfigText(JSON.stringify(convertedConfig, null, 2));
     } catch (error) {
-      console.error('Error saving role:', error);
+      logger.error('Error saving role:', {error});
       alert('역할 저장 중 오류가 발생했습니다. MCP 설정이 올바른 JSON 형식인지 확인해주세요.');
     }
   };
@@ -177,8 +183,29 @@ export default function RoleManager({ onClose, onRoleSelect, onRoleUpdate, curre
         await mcpDB.deleteRole(roleId);
         await loadRoles();
       } catch (error) {
-        console.error('Error deleting role:', error);
+      logger.error('Error deleting role:', {error});
         alert('역할 삭제 중 오류가 발생했습니다.');
+      }
+    }
+  };
+
+  const startMCPServers = async (mcpConfig: any) => {
+    if (mcpConfig.mcpServers) {
+      for (const serverName in mcpConfig.mcpServers) {
+        logger.debug("start ", {server: serverName});
+        const server = mcpConfig.mcpServers[serverName];
+        const config: MCPServerConfig = {
+          name: serverName,
+          command: server.command,
+          args: server.args,
+          env: server.env,
+          transport: 'stdio',
+        };
+        try {
+          await tauriMCPClient.startServer(config);
+        } catch (error) {
+          logger.error(`Failed to start server ${serverName}:`, {error});
+        }
       }
     }
   };

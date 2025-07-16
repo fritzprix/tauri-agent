@@ -1,8 +1,6 @@
-import { useState, useEffect } from 'react';
-import Dropdown from './Dropdown';
-import type { ProviderInfo, ModelInfo } from '../../lib/llm-config-manager';
-import { llmConfigManager } from '../../lib/llm-config-manager';
-import { mcpDB } from '../../lib/db';
+import { FC } from 'react';
+import { Dropdown } from './Dropdown';
+import { useModelPickerLogic } from '../../hooks/use-model-picker';
 
 interface ModelPickerProps {
   selectedProvider?: string;
@@ -12,227 +10,87 @@ interface ModelPickerProps {
   className?: string;
 }
 
-interface ProviderOption {
-  id: string;
-  info: ProviderInfo;
+const CompactModelPicker: FC<ModelPickerProps> = ({ selectedProvider, selectedModel, onProviderChange, onModelChange, className = "" }) => {
+  const { loading, providerOptions, modelOptions, selectedModelData, apiKeyStatus } = useModelPickerLogic(selectedProvider, selectedModel, onProviderChange, onModelChange);
+
+  if (loading) {
+    return <div className={`font-mono text-sm text-gray-400 animate-pulse ${className}`}>[loading...]</div>;
+  }
+
+  return (
+    <div className={`flex items-center space-x-2 bg-gray-900/70 border border-green-600/30 rounded-lg px-3 py-1 font-mono text-green-300 w-full max-w-lg mx-auto ${className}`}>
+      {apiKeyStatus && (
+        <div title={apiKeyStatus.text} className={`w-2 h-2 rounded-full flex-shrink-0 ${apiKeyStatus.configured ? 'bg-green-500' : 'bg-yellow-500'}`}></div>
+      )}
+      <Dropdown
+        options={providerOptions}
+        value={selectedProvider}
+        placeholder="provider"
+        onChange={onProviderChange}
+        className="flex-shrink w-28"
+        variant="compact"
+      />
+      <span className="text-gray-600">/</span>
+      <Dropdown
+        options={modelOptions}
+        value={selectedModel}
+        placeholder="model"
+        onChange={onModelChange}
+        disabled={!selectedProvider || modelOptions.length === 0}
+        className="flex-grow min-w-0"
+        variant="compact"
+      />
+      {selectedModelData && (
+        <span className="text-xs text-gray-400 bg-gray-800 px-2 py-0.5 rounded">
+          {selectedModelData.contextWindow / 1000}k
+        </span>
+      )}
+    </div>
+  );
 }
 
-interface ModelOption {
-  id: string;
-  info: ModelInfo;
-}
-
-export default function ModelPicker({
-  selectedProvider,
-  selectedModel,
-  onProviderChange,
-  onModelChange,
-  className = ""
-}: ModelPickerProps) {
-  const [providers, setProviders] = useState<ProviderOption[]>([]);
-  const [models, setModels] = useState<ModelOption[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  // 기본값 설정
-  useEffect(() => {
-    const setDefaults = () => {
-      try {
-        // 아직 provider가 선택되지 않았고, 기본 설정이 있는 경우
-        if (!selectedProvider && !selectedModel) {
-          const defaultConfig = llmConfigManager.getDefaultServiceConfig();
-          if (defaultConfig) {
-            onProviderChange(defaultConfig.provider);
-            onModelChange(defaultConfig.model);
-          }
-        }
-      } catch (error) {
-        console.error('Failed to set default configuration:', error);
-      }
-    };
-
-    // providers가 로드된 후에 기본값 설정
-    if (!loading && providers.length > 0) {
-      setDefaults();
-    }
-  }, [loading, providers, selectedProvider, selectedModel, onProviderChange, onModelChange]);
-
-  useEffect(() => {
-    const loadProviders = async () => {
-      try {
-        const allProviders = llmConfigManager.getProviders();
-        if (!allProviders || typeof allProviders !== 'object') {
-          console.error('Invalid providers data received');
-          setLoading(false);
-          return;
-        }
-        
-        const providerArray = Object.entries(allProviders).map(([id, info]) => ({
-          id,
-          info
-        }));
-        setProviders(providerArray);
-        setLoading(false);
-      } catch (error) {
-        console.error('Failed to load providers:', error);
-        setProviders([]); // Set empty array on error
-        setLoading(false);
-      }
-    };
-
-    loadProviders();
-  }, []);
-
-  useEffect(() => {
-    const loadModels = async () => {
-      if (selectedProvider) {
-        try {
-          const availableModels = llmConfigManager.getModelsForProvider(selectedProvider);
-          if (availableModels && typeof availableModels === 'object') {
-            const modelArray = Object.entries(availableModels).map(([id, info]) => ({
-              id,
-              info
-            }));
-            setModels(modelArray);
-            
-            // Reset model selection if current model is not available for new provider
-            if (selectedModel && !Object.keys(availableModels).includes(selectedModel)) {
-              onModelChange('');
-            }
-          } else {
-            setModels([]);
-          }
-        } catch (error) {
-          console.error('Failed to load models:', error);
-          setModels([]);
-        }
-      } else {
-        setModels([]);
-      }
-    };
-
-    loadModels();
-  }, [selectedProvider, selectedModel, onModelChange]);
-
-  const handleProviderChange = async (provider: string) => {
-    onProviderChange(provider);
-    if (selectedModel) {
-      await mcpDB.saveSetting('llm', { provider, model: selectedModel });
-    }
-  };
-
-  const handleModelChange = async (model: string) => {
-    onModelChange(model);
-    if (selectedProvider) {
-      await mcpDB.saveSetting('llm', { provider: selectedProvider, model });
-    }
-  };
-
-  const providerOptions = providers.map(provider => ({
-    value: provider.id,
-    label: provider.info.name,
-    disabled: false // All providers from config are considered enabled
-  }));
-
-  const modelOptions = models.map(model => ({
-    value: model.id,
-    label: `${model.info.name} - $${model.info.cost.input?.toFixed(4) || '?'}/1k`,
-    disabled: false
-  }));
-
-  const selectedProviderData = providers.find(p => p.id === selectedProvider);
+// --- THE ORIGINAL TERMINAL MODEL PICKER ---
+const TerminalModelPicker: FC<ModelPickerProps> = ({ selectedProvider, selectedModel, onProviderChange, onModelChange, className = "" }) => {
+  const { loading, providerOptions, modelOptions, selectedModelData, apiKeyStatus } = useModelPickerLogic(selectedProvider, selectedModel, onProviderChange, onModelChange);
 
   if (loading) {
     return (
-      <div className={`font-mono text-green-400 ${className}`}>
-        <div className="animate-pulse">
-          <div className="text-xs mb-2 text-green-600">[ LOADING LLM PROVIDERS... ]</div>
-          <div className="h-10 bg-gray-900 border border-gray-700 rounded"></div>
-        </div>
+      <div className={`bg-gray-900 border border-green-600/30 rounded-lg p-4 font-mono text-green-300 w-full max-w-lg mx-auto flex items-center space-x-3 ${className}`}>
+        <div className="animate-spin w-5 h-5 border-2 border-green-400 border-t-transparent rounded-full"></div>
+        <span className="text-sm text-gray-400">Initializing LLM interface...</span>
       </div>
     );
   }
 
   return (
-    <div className={`space-y-4 font-mono ${className}`}>
-      {/* Header */}
-      <div className="border-b border-green-700 pb-2">
-        <div className="text-green-300 text-sm">
-          === LLM CONFIGURATION ===
+    <div className={`bg-gray-900/70 backdrop-blur-sm border border-green-600/30 rounded-lg p-4 font-mono text-green-300 w-full max-w-lg mx-auto ${className}`}>
+      <div className="space-y-4">
+        <div className="grid grid-cols-[90px_1fr_auto] gap-3 items-center">
+          <label className="text-sm text-green-500">PROVIDER:</label>
+          <Dropdown options={providerOptions} value={selectedProvider} placeholder="<select>" onChange={onProviderChange} />
+          {apiKeyStatus && (<div className={`text-xs px-2 py-1 rounded font-bold ${apiKeyStatus.configured ? 'bg-green-500/20 text-green-400' : 'bg-yellow-500/20 text-yellow-400'}`}>{apiKeyStatus.text}</div>)}
         </div>
-        <div className="text-green-600 text-xs mt-1">
-          SELECT PROVIDER AND MODEL
+        <div className="grid grid-cols-[90px_1fr] gap-3 items-center">
+          <label className="text-sm text-green-500">MODEL:</label>
+          <Dropdown options={modelOptions} value={selectedModel} placeholder={selectedProvider ? "<select>" : "..."} onChange={onModelChange} disabled={!selectedProvider || modelOptions.length === 0} />
         </div>
-      </div>
-
-      {/* Provider Selection */}
-      <div className="space-y-2">
-        <label className="block text-green-400 text-sm font-mono">
-          <span className="text-green-600">[1]</span> PROVIDER:
-        </label>
-        <Dropdown
-          options={providerOptions}
-          value={selectedProvider}
-          placeholder="> SELECT PROVIDER"
-          onChange={handleProviderChange}
-        />
-        
-        {selectedProviderData && (
-          <div className="text-xs text-green-600 px-3 py-1 bg-green-900/10 border border-green-800">
-            STATUS: ACTIVE | 
-            API: {(() => {
-              try {
-                const envVar = selectedProviderData.info.apiKeyEnvVar;
-                const hasKey = envVar && (import.meta.env[envVar] || process.env[envVar]);
-                return hasKey ? 'CONFIGURED' : 'MISSING';
-              } catch {
-                return 'UNKNOWN';
-              }
-            })()}
+        {selectedModelData && (
+          <div className="border-t border-green-600/20 mt-4 pt-3 text-xs text-gray-400 space-y-2">
+            <div className="flex justify-between items-center">
+              <span>CONTEXT: <span className="font-semibold text-green-400">{selectedModelData.contextWindow?.toLocaleString() || 'N/A'}</span></span>
+              <span>TOOLS: {selectedModelData.supportTools ? <span className="font-semibold text-green-400">YES</span> : <span className="text-yellow-400">NO</span>}</span>
+              <span>REASONING: {selectedModelData.supportReasoning ? <span className="font-semibold text-green-400">YES</span> : <span className="text-yellow-400">NO</span>}</span>
+            </div>
+            <div className="flex justify-between items-center text-gray-500">
+              <span>COST (IN): <span className="font-semibold text-gray-400">${(selectedModelData.cost?.input * 1000)?.toFixed(2) || '?'}</span>/Mtok</span>
+              <span>COST (OUT): <span className="font-semibold text-gray-400">${(selectedModelData.cost?.output * 1000)?.toFixed(2) || '?'}</span>/Mtok</span>
+            </div>
           </div>
         )}
-      </div>
-
-      {/* Model Selection */}
-      <div className="space-y-2">
-        <label className="block text-green-400 text-sm font-mono">
-          <span className="text-green-600">[2]</span> MODEL:
-        </label>
-        <Dropdown
-          options={modelOptions}
-          value={selectedModel}
-          placeholder={selectedProvider ? "> SELECT MODEL" : "> SELECT PROVIDER FIRST"}
-          onChange={handleModelChange}
-          disabled={!selectedProvider || models.length === 0}
-        />
-        
-        {selectedModel && (
-          <div className="text-xs text-green-600 px-3 py-1 bg-green-900/10 border border-green-800">
-            {(() => {
-              try {
-                const model = models.find(m => m.id === selectedModel);
-                if (!model) return 'MODEL NOT FOUND';
-                
-                const contextWindow = model.info.contextWindow?.toLocaleString() || '?';
-                const inputCost = model.info.cost?.input?.toFixed(4) || '?';
-                const hasTools = model.info.supportTools ? 'TOOLS' : 'NO-TOOLS';
-                const reasoning = model.info.supportReasoning ? 'REASONING' : 'STANDARD';
-                
-                return `CONTEXT: ${contextWindow} tokens | COST: $${inputCost}/1k | FEATURES: ${hasTools}, ${reasoning}`;
-              } catch (error) {
-                console.error('Error displaying model info:', error);
-                return 'ERROR LOADING MODEL INFO';
-              }
-            })()}
-          </div>
-        )}
-      </div>
-
-      {/* Status */}
-      <div className="pt-2 border-t border-green-800">
-        <div className="text-xs text-green-600">
-          STATUS: {selectedProvider && selectedModel ? 'READY' : 'INCOMPLETE CONFIGURATION'}
-        </div>
       </div>
     </div>
   );
 }
+
+
+export { CompactModelPicker, TerminalModelPicker }; 
