@@ -1,21 +1,15 @@
 import { useEffect, useMemo, useState } from "react";
 import { llmConfigManager, ModelInfo, ProviderInfo } from "../lib/llm-config-manager";
-import { AIServiceProvider } from "../lib/ai-service";
+
 
 interface ApiKeyStatus {
     configured: boolean;
     text: string;
 }
 
-// Provider to API key mapping (you should move this to environment variables)
-const API_KEYS: Record<string, string> = {
-    [AIServiceProvider.OpenAI]: import.meta.env.VITE_OPENAI_API_KEY || '',
-    [AIServiceProvider.Anthropic]: import.meta.env.VITE_ANTHROPIC_API_KEY || '',
-    [AIServiceProvider.Groq]: import.meta.env.VITE_GROQ_API_KEY || '',
-    [AIServiceProvider.Gemini]: import.meta.env.VITE_GEMINI_API_KEY || '',
-};
 
-const useModelPickerLogic = (selectedProvider?: string, selectedModel?: string, onProviderChange?: (p: string) => void, onModelChange?: (m: string) => void) => {
+
+const useModelPickerLogic = (apiKeys: Record<string, string>, selectedProvider?: string, selectedModel?: string, onProviderChange?: (p: string) => void, onModelChange?: (m: string) => void) => {
     const [providers, setProviders] = useState<ProviderInfo[]>([]);
     const [models, setModels] = useState<ModelInfo[]>([]);
     const [loading, setLoading] = useState<boolean>(true);
@@ -62,7 +56,7 @@ const useModelPickerLogic = (selectedProvider?: string, selectedModel?: string, 
     const apiKeyStatus: ApiKeyStatus | null = useMemo(() => {
         if (!selectedProviderData) return null;
         try {
-            const hasKey = !!API_KEYS[selectedProviderData.name];
+            const hasKey = !!apiKeys[selectedProviderData.name];
             return { configured: hasKey, text: hasKey ? 'KEY FOUND' : 'KEY MISSING' };
         } catch { return { configured: false, text: 'ERROR' }; }
     }, [selectedProviderData]);

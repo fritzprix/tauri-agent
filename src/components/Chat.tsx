@@ -7,7 +7,8 @@ import {
   IAIService,
   StreamableMessage
 } from '../lib/ai-service';
-import { LLMSettings, mcpDB, Role } from '../lib/db';
+import { mcpDB, Role } from '../lib/db';
+import { useSettings } from '../hooks/use-settings';
 import { getLogger } from '../lib/logger';
 import { MCPTool, tauriMCPClient } from '../lib/tauri-mcp-client';
 import RoleManager from './RoleManager';
@@ -35,23 +36,15 @@ interface MessageWithAttachments {
   attachments?: { name: string; content: string; }[];
 }
 
-// Provider to API key mapping (you should move this to environment variables)
-const API_KEYS: Record<string, string> = {
-  [AIServiceProvider.OpenAI]: import.meta.env.VITE_OPENAI_API_KEY || '',
-  [AIServiceProvider.Anthropic]: import.meta.env.VITE_ANTHROPIC_API_KEY || '',
-  [AIServiceProvider.Groq]: import.meta.env.VITE_GROQ_API_KEY || '',
-  [AIServiceProvider.Gemini]: import.meta.env.VITE_GEMINI_API_KEY || '',
-};
+
 
 export default function Chat() {
+  const { apiKeys, selectedProvider, setSelectedProvider, selectedModel, setSelectedModel, messageWindowSize } = useSettings();
+
   const [mode, setMode] = useState('agent');
   const [currentRole, setCurrentRole] = useState<Role | null>(null);
   const [showRoleManager, setShowRoleManager] = useState(false);
   const [showToolsDetail, setShowToolsDetail] = useState(false);
-
-  // Model selection state
-  const [selectedProvider, setSelectedProvider] = useState<string>('');
-  const [selectedModel, setSelectedModel] = useState<string>('');
 
   const [agentMessages, setAgentMessages] = useState<MessageWithAttachments[]>([]);
   const [agentInput, setAgentInput] = useState('');
@@ -86,7 +79,7 @@ export default function Chat() {
     }
 
     const provider = selectedProvider as AIServiceProvider;
-    const apiKey = API_KEYS[provider];
+    const apiKey = apiKeys[provider];
 
     if (!apiKey) {
       throw new AIServiceError(`No API key configured for ${provider}`, provider);
@@ -95,28 +88,7 @@ export default function Chat() {
     return AIServiceFactory.getService(provider, apiKey, aiServiceConfig);
   };
 
-  // Save LLM settings to database when they change
-  const saveLLMSettings = async (provider: string, model: string) => {
-    try {
-      const llmSettings: LLMSettings = { provider, model };
-      await mcpDB.saveSetting('llm', llmSettings);
-    } catch (error) {
-      logger.error('Error saving LLM settings:', {error});
-    }
-  };
-
-  // Handle provider change
-  const handleProviderChange = (provider: string) => {
-    setSelectedProvider(provider);
-    setSelectedModel(''); // Reset model when provider changes
-    saveLLMSettings(provider, '');
-  };
-
-  // Handle model change
-  const handleModelChange = (model: string) => {
-    setSelectedModel(model);
-    saveLLMSettings(selectedProvider, model);
-  };
+  
 
   // MCP 서버 전체 상태 계산
   const getMCPStatus = () => {
@@ -216,16 +188,6 @@ export default function Chat() {
           const defaultRole = roles.find(r => r.isDefault) || roles[0];
           setCurrentRole(defaultRole);
           await connectToMCP(defaultRole);
-        }
-
-        // Load LLM settings from DB
-        const savedLLMSettings = await mcpDB.getSetting<LLMSettings>('llm');
-        if (savedLLMSettings) {
-          setSelectedProvider(savedLLMSettings.provider);
-          setSelectedModel(savedLLMSettings.model);
-        } else {
-          // Set default provider if none selected
-          setSelectedProvider(AIServiceProvider.OpenAI);
         }
 
         setIsInitialized(true);
@@ -446,7 +408,7 @@ export default function Chat() {
     aiServiceConfig: AIServiceConfig;
     isAgentMode?: boolean;
   }) => {
-    let currentConversation: StreamableMessage[] = [...initialConversation];
+    let currentConversation: StreamableMessage[] = initialConversation.slice(-messageWindowSize);
     let responseId = (Date.now() + 1).toString();
     let fullResponse = '';
     let toolCallsDetected = false;
@@ -576,7 +538,7 @@ export default function Chat() {
       // System prompt 생성
       let systemPrompt = currentRole.systemPrompt || "You are a helpful AI assistant.";      if (availableTools.length > 0) {        systemPrompt += `\n\nAvailable tools: ${availableTools.map(t => `${t.name}: ${t.description}`).join(', ')}\nIf a tool call fails, analyze the error message and try to correct your approach.`;      }
 
-      let currentConversation: StreamableMessage[] = [...agentMessages, userMessage].map(msg => ({
+      let currentConversation: StreamableMessage[] = [...agentMessages, userMessage].slice(-messageWindowSize).map(msg => ({
         id: msg.id,
         content: msg.content,
         role: msg.role as 'user' | 'assistant' | 'system' | 'tool'
@@ -832,8 +794,8 @@ export default function Chat() {
         <CompactModelPicker
           selectedProvider={selectedProvider}
           selectedModel={selectedModel}
-          onProviderChange={handleProviderChange}
-          onModelChange={handleModelChange}
+          onProviderChange={setSelectedProvider}
+          onModelChange={setSelectedModel}
           className=""
         />
       </div>
@@ -850,7 +812,7 @@ export default function Chat() {
                 </div>
                 <div className="whitespace-pre-wrap text-sm">{m.content}</div>
                 {m.thinking && (
-                  <div className="flex items-center gap-2 mt-2 text-sm text-gray-400">
+                  <div className="flex items-center gap-2 mt-2 text-sm text-gray-400 bg-gray-900/70 h-8 overflow-hidden px-2 rounded">
                     <LoadingSpinner size="sm" /> {m.thinking}
                   </div>
                 )}
@@ -867,7 +829,7 @@ export default function Chat() {
                 </div>
                 <div className="whitespace-pre-wrap text-sm">{m.content}</div>
                 {m.thinking && (
-                  <div className="flex items-center gap-2 mt-2 text-sm text-gray-400">
+                  <div className="flex items-center gap-2 mt-2 text-sm text-gray-400 bg-gray-900/70 h-8 overflow-hidden px-2 rounded">
                     <LoadingSpinner size="sm" /> {m.thinking}
                   </div>
                 )}

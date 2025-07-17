@@ -1,6 +1,7 @@
 import { FC } from 'react';
 import { Dropdown } from './Dropdown';
 import { useModelPickerLogic } from '../../hooks/use-model-picker';
+import { useSettings } from '../../hooks/use-settings';
 
 interface ModelPickerProps {
   selectedProvider?: string;
@@ -11,7 +12,8 @@ interface ModelPickerProps {
 }
 
 const CompactModelPicker: FC<ModelPickerProps> = ({ selectedProvider, selectedModel, onProviderChange, onModelChange, className = "" }) => {
-  const { loading, providerOptions, modelOptions, selectedModelData, apiKeyStatus } = useModelPickerLogic(selectedProvider, selectedModel, onProviderChange, onModelChange);
+  const { apiKeys } = useSettings();
+  const { loading, providerOptions, modelOptions, selectedModelData, apiKeyStatus } = useModelPickerLogic(apiKeys, selectedProvider, selectedModel, onProviderChange, onModelChange);
 
   if (loading) {
     return <div className={`font-mono text-sm text-gray-400 animate-pulse ${className}`}>[loading...]</div>;
@@ -51,7 +53,8 @@ const CompactModelPicker: FC<ModelPickerProps> = ({ selectedProvider, selectedMo
 
 // --- THE ORIGINAL TERMINAL MODEL PICKER ---
 const TerminalModelPicker: FC<ModelPickerProps> = ({ selectedProvider, selectedModel, onProviderChange, onModelChange, className = "" }) => {
-  const { loading, providerOptions, modelOptions, selectedModelData, apiKeyStatus } = useModelPickerLogic(selectedProvider, selectedModel, onProviderChange, onModelChange);
+  const { apiKeys } = useSettings();
+  const { loading, providerOptions, modelOptions, selectedModelData, apiKeyStatus } = useModelPickerLogic(apiKeys, selectedProvider, selectedModel, onProviderChange, onModelChange);
 
   if (loading) {
     return (
