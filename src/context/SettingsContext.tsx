@@ -1,122 +1,146 @@
-import React, { createContext, ReactNode, useEffect, useState } from 'react';
+import React, { createContext, ReactNode, useEffect, useState, useContext, useCallback } from 'react';
 import { AIServiceProvider } from '../lib/ai-service';
-import { mcpDB } from '../lib/db';
+import { dbService, Role } from '../lib/db';
 import { getLogger } from '../lib/logger';
 
 const logger = getLogger('SettingsContext');
 
 interface SettingsContextType {
+  // LLM & API Settings
   apiKeys: Record<AIServiceProvider, string>;
-  setApiKeys: (keys: Record<AIServiceProvider, string>) => void;
+  setApiKeys: (keys: Record<AIServiceProvider, string>) => Promise<void>;
   selectedProvider: string | undefined;
-  setSelectedProvider: (provider: string | undefined) => void;
+  setSelectedProvider: (provider: string | undefined) => Promise<void>;
   selectedModel: string | undefined;
-  setSelectedModel: (model: string | undefined) => void;
+  setSelectedModel: (model: string | undefined) => Promise<void>;
   messageWindowSize: number;
-  setMessageWindowSize: (size: number) => void;
+  setMessageWindowSize: (size: number) => Promise<void>;
+
+  // Role Management
+  roles: Role[];
+  saveRole: (role: Role) => Promise<void>;
+  deleteRole: (roleId: string) => Promise<void>;
+  isRolesLoading: boolean;
 }
 
 export const SettingsContext = createContext<SettingsContextType | undefined>(undefined);
 
-interface SettingsProviderProps {
-  children: ReactNode;
-}
+export const SettingsProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
+  // State
+  const [apiKeys, setApiKeysState] = useState<Record<AIServiceProvider, string>>(() => ({} as Record<AIServiceProvider, string>));
+  const [selectedProvider, setSelectedProviderState] = useState<string | undefined>();
+  const [selectedModel, setSelectedModelState] = useState<string | undefined>();
+  const [messageWindowSize, setMessageWindowSizeState] = useState<number>(50);
+  const [roles, setRoles] = useState<Role[]>([]);
+  const [isRolesLoading, setIsRolesLoading] = useState(true);
 
-export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children }) => {
-  const [apiKeys, setApiKeysState] = useState<Record<AIServiceProvider, string>>(() => {
-    const savedKeys = localStorage.getItem('apiKeys');
-    return savedKeys ? JSON.parse(savedKeys) : {};
-  });
-  const [selectedProvider, setSelectedProviderState] = useState<string | undefined>(() => localStorage.getItem('selectedProvider') || undefined);
-  const [selectedModel, setSelectedModelState] = useState<string | undefined>(() => localStorage.getItem('selectedModel') || undefined);
-  const [messageWindowSize, setMessageWindowSizeState] = useState<number>(() => {
-    const savedSize = localStorage.getItem('messageWindowSize');
-    return savedSize ? parseInt(savedSize, 10) : 50; // Default to 50 if not found
-  });
-
-  // Function to update API keys and persist to localStorage
-  const setApiKeys = (keys: Record<AIServiceProvider, string>) => {
+  // --- API & LLM Settings ---
+  const setApiKeys = async (keys: Record<AIServiceProvider, string>) => {
     setApiKeysState(keys);
-    localStorage.setItem('apiKeys', JSON.stringify(keys));
+    await dbService.saveSetting('apiKeys', keys);
   };
 
-  // Function to update selected provider and persist to localStorage
-  const setSelectedProvider = (provider: string | undefined) => {
+  const setSelectedProvider = async (provider: string | undefined) => {
     setSelectedProviderState(provider);
-    if (provider) {
-      localStorage.setItem('selectedProvider', provider);
-    } else {
-      localStorage.removeItem('selectedProvider');
-    }
-    // Also save to mcpDB for LLM settings
-    saveLLMSettings(provider, selectedModel);
+    const currentSettings = await dbService.getSetting<{ provider: string; model: string }>('llm');
+    await dbService.saveSetting('llm', { ...currentSettings, provider: provider || '' });
   };
 
-  // Function to update selected model and persist to localStorage
-  const setSelectedModel = (model: string | undefined) => {
+  const setSelectedModel = async (model: string | undefined) => {
     setSelectedModelState(model);
-    if (model) {
-      localStorage.setItem('selectedModel', model);
-    } else {
-      localStorage.removeItem('selectedModel');
-    }
-    // Also save to mcpDB for LLM settings
-    saveLLMSettings(selectedProvider, model);
+    const currentSettings = await dbService.getSetting<{ provider: string; model: string }>('llm');
+    await dbService.saveSetting('llm', { ...currentSettings, model: model || '' });
   };
 
-  // Function to update message window size and persist to localStorage
-  const setMessageWindowSize = (size: number) => {
+  const setMessageWindowSize = async (size: number) => {
     setMessageWindowSizeState(size);
-    localStorage.setItem('messageWindowSize', size.toString());
+    await dbService.saveSetting('messageWindowSize', size);
   };
 
-  // Helper to save LLM settings to mcpDB
-  const saveLLMSettings = async (provider: string | undefined, model: string | undefined) => {
+  // --- Role Management ---
+  const loadRoles = useCallback(async () => {
+    setIsRolesLoading(true);
     try {
-      const llmSettings = { provider: provider || '', model: model || '' };
-      await mcpDB.saveSetting('llm', llmSettings);
-    } catch (error) {
-      logger.error('Error saving LLM settings to DB:', {error});
-    }
-  };
-
-  // Load LLM settings from mcpDB on initial mount if not already in localStorage
-  useEffect(() => {
-    const loadInitialLLMSettings = async () => {
-      if (!selectedProvider && !selectedModel) { // Only load from DB if not already set from localStorage
-        try {
-          const savedLLMSettings = await mcpDB.getSetting<{ provider: string; model: string }>('llm');
-          if (savedLLMSettings) {
-            setSelectedProviderState(savedLLMSettings.provider);
-            setSelectedModelState(savedLLMSettings.model);
-            localStorage.setItem('selectedProvider', savedLLMSettings.provider);
-            localStorage.setItem('selectedModel', savedLLMSettings.model);
-          }
-        } catch (error) {
-          logger.error('Error loading initial LLM settings from DB:', {error});
-        }
+      let rolesFromDb = await dbService.getRoles();
+      if (rolesFromDb.length === 0) {
+        logger.info('No roles found, creating default role.');
+        const defaultRole: Role = {
+          id: `role_${Date.now()}`,
+          name: 'Default Role',
+          systemPrompt: 'You are a helpful AI assistant.',
+          mcpConfig: { mcpServers: {} },
+          isDefault: true,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        };
+        await dbService.saveRole(defaultRole);
+        rolesFromDb = [defaultRole];
       }
-    };
-    loadInitialLLMSettings();
+      setRoles(rolesFromDb);
+    } catch (error) {
+      logger.error('Error loading roles from DB:', { error });
+      setRoles([]);
+    } finally {
+      setIsRolesLoading(false);
+    }
   }, []);
 
+  const saveRole = async (role: Role) => {
+    await dbService.saveRole(role);
+    await loadRoles(); // Reload roles after saving
+  };
+
+  const deleteRole = async (roleId: string) => {
+    await dbService.deleteRole(roleId);
+    await loadRoles(); // Reload roles after deleting
+  };
+
+  // --- Initial Load ---
+  useEffect(() => {
+    const loadInitialSettings = async () => {
+      const [savedKeys, savedLLMSettings, savedSize] = await Promise.all([
+        dbService.getSetting<Record<AIServiceProvider, string>>('apiKeys'),
+        dbService.getSetting<{ provider: string; model: string }>('llm'),
+        dbService.getSetting<number>('messageWindowSize'),
+        loadRoles(),
+      ]);
+
+      if (savedKeys) setApiKeysState(savedKeys);
+      if (savedLLMSettings) {
+        setSelectedProviderState(savedLLMSettings.provider);
+        setSelectedModelState(savedLLMSettings.model);
+      }
+      if (savedSize) setMessageWindowSizeState(savedSize);
+    };
+    loadInitialSettings();
+  }, [loadRoles]);
+
+  const value = {
+    apiKeys,
+    setApiKeys,
+    selectedProvider,
+    setSelectedProvider,
+    selectedModel,
+    setSelectedModel,
+    messageWindowSize,
+    setMessageWindowSize,
+    roles,
+    saveRole,
+    deleteRole,
+    isRolesLoading,
+  };
 
   return (
-    <SettingsContext.Provider
-      value={{
-        apiKeys,
-        setApiKeys,
-        selectedProvider,
-        setSelectedProvider,
-        selectedModel,
-        setSelectedModel,
-        messageWindowSize,
-        setMessageWindowSize,
-      }}
-    >
+    <SettingsContext.Provider value={value}>
       {children}
     </SettingsContext.Provider>
   );
 };
 
-
+export const useSettings = () => {
+  const context = useContext(SettingsContext);
+  if (!context) {
+    throw new Error('useSettings must be used within a SettingsProvider');
+  }
+  return context;
+};
