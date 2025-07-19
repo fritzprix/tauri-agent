@@ -48,21 +48,32 @@ export const RoleContextProvider = ({ children }: { children: ReactNode }) => {
   }, [currentRole, connectToMCP]);
 
   const saveRole = async (editingRole: Partial<Role>, mcpConfigText: string): Promise<Role | undefined> => {
-    if (!editingRole?.name || !editingRole?.systemPrompt) {
-      alert('이름과 시스템 프롬프트는 필수입니다.');
+    if (!editingRole?.name) {
+      alert('이름은 필수입니다.');
       return;
     }
+    // 기본 systemPrompt가 없으면 Agent에 맞는 프롬프트로 자동 설정
+    const agentPrompt = `You are an AI assistant agent that can use external tools via MCP (Model Context Protocol).\n- Always analyze the user's intent and, if needed, use available tools to provide the best answer.\n- When a tool is required, call the appropriate tool with correct parameters.\n- If the answer can be given without a tool, respond directly.\n- Be concise and clear. If you use a tool, explain the result to the user in natural language.\n- If you are unsure, ask clarifying questions before taking action.`;
+    const systemPrompt = editingRole.systemPrompt || agentPrompt;
     try {
       const mcpConfig = JSON.parse(mcpConfigText);
       const finalConfig = { mcpServers: mcpConfig.mcpServers || {} };
 
+      // 기존 Role 편집 시 id를 유지, 새 Role일 때만 id 생성
+      let roleId = editingRole.id;
+      let createdAt = editingRole.createdAt;
+      if (!roleId) {
+        roleId = `role_${Date.now()}`;
+        createdAt = new Date();
+      }
+
       const roleToSave: Role = {
-        id: editingRole.id || `role_${Date.now()}`,
+        id: roleId,
         name: editingRole.name,
-        systemPrompt: editingRole.systemPrompt,
+        systemPrompt,
         mcpConfig: finalConfig,
         isDefault: editingRole.isDefault || false,
-        createdAt: editingRole.createdAt || new Date(),
+        createdAt: createdAt || new Date(),
         updatedAt: new Date(),
       };
 

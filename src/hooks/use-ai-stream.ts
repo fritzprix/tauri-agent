@@ -1,11 +1,15 @@
-import { AIServiceConfig, IAIService, StreamableMessage } from '../lib/ai-service';
-import { getLogger } from '../lib/logger';
-import { MCPTool } from '../lib/tauri-mcp-client';
+import {
+  AIServiceConfig,
+  IAIService,
+  StreamableMessage,
+} from "../lib/ai-service";
+import { getLogger } from "../lib/logger";
+import { MCPTool } from "../lib/tauri-mcp-client";
+import { AIOrchestrator, OrchestratorFactory } from "./use-ai-orchestrator";
 
 const logger = getLogger("use-ai-stream");
 
-
-interface ProcessAIStreamOptions {
+export interface ProcessAIStreamOptions {
   aiService: IAIService;
   initialConversation: StreamableMessage[];
   setMessagesState: React.Dispatch<React.SetStateAction<StreamableMessage[]>>;
@@ -13,9 +17,13 @@ interface ProcessAIStreamOptions {
   systemPrompt?: string;
   availableTools?: MCPTool[];
   aiServiceConfig: AIServiceConfig;
-  isAgentMode?: boolean;
-  executeToolCall: (toolCall: { id: string; type: 'function'; function: { name: string; arguments: string; } }) => Promise<{ role: 'tool'; content: string; tool_call_id: string }>;
+  executeToolCall: (toolCall: {
+    id: string;
+    type: "function";
+    function: { name: string; arguments: string };
+  }) => Promise<{ role: "tool"; content: string; tool_call_id: string }>;
   messageWindowSize: number;
+  orchestrator?: AIOrchestrator; // Optional - will use default if not provided
 }
 
 export const useAIStream = () => {
@@ -25,110 +33,159 @@ export const useAIStream = () => {
     setMessagesState,
     modelName,
     systemPrompt,
-    availableTools,
+    availableTools = [],
     aiServiceConfig,
-    isAgentMode = false,
     executeToolCall,
     messageWindowSize,
+    orchestrator,
   }: ProcessAIStreamOptions) => {
-    let currentConversation: StreamableMessage[] = initialConversation.slice(-messageWindowSize);
+    // Create default orchestrator if not provided
+    const aiOrchestrator =
+      orchestrator || OrchestratorFactory.createDefault(availableTools);
+
+    let currentConversation: StreamableMessage[] = initialConversation.slice(
+      -messageWindowSize
+    );
     let responseId = (Date.now() + 1).toString();
-    let fullResponse = '';
-    let toolCallsDetected = false;
+    let fullResponse = "";
 
-    // 빈 응답 메시지 추가
-    let initialResponse: StreamableMessage = {
+    // Initialize empty response
+    const initialResponse: StreamableMessage = {
       id: responseId,
-      content: '',
-      role: 'assistant',
-      isStreaming: true
+      content: "",
+      role: "assistant",
+      isStreaming: true,
     };
-    setMessagesState(prev => [...prev, initialResponse]);
-    logger.info("tools: ", { availableTools, isAgentMode });
+    setMessagesState((prev) => [...prev, initialResponse]);
 
-    do {
-      toolCallsDetected = false;
-      let currentChunk = '';
+    logger.info("Starting AI stream", {
+      availableTools: availableTools.length,
+      orchestrator: aiOrchestrator.getDisplayName(),
+    });
+
+    let conversationActive = true;
+
+    while (conversationActive) {
+      let currentChunk = "";
       let isFirstChunk = true;
+      let turnComplete = false;
 
+      // Stream AI response
       for await (const chunk of aiService.streamChat(currentConversation, {
         modelName,
         systemPrompt,
         availableTools,
-        config: aiServiceConfig
+        config: aiServiceConfig,
       })) {
         currentChunk += chunk;
 
-        try {
-          const parsedChunk = JSON.parse(currentChunk);
-          if (parsedChunk.tool_calls && parsedChunk.tool_calls.length > 0) {
-            toolCallsDetected = true;
-            // Update the AI's current streaming message to indicate tool use
-            setMessagesState(prev => prev.map(msg => msg.id === responseId ? { ...msg, content: fullResponse, thinking: `${isAgentMode ? 'Agent' : 'Assistant'} is using tools...` } : msg));
-
-            for (const toolCall of parsedChunk.tool_calls) {
-              const toolResult = await executeToolCall(toolCall);
-              // Add tool result to both UI and conversation history
-              setMessagesState(prev => [...prev, { id: toolResult.tool_call_id, content: toolResult.content, role: toolResult.role as any }]);
-              currentConversation.push({ id: toolResult.tool_call_id, content: toolResult.content, role: toolResult.role as any });
-            }
-            currentChunk = ''; // Reset chunk after processing tool calls
-            break; // Break from inner for-await loop to re-call aiService.streamChat
-          } else {
-            // Regular content chunk
-            if (isFirstChunk) {
-              fullResponse = currentChunk;
-              isFirstChunk = false;
-            } else {
-              fullResponse += chunk;
-            }
-            setMessagesState(prev =>
-              prev.map(msg =>
-                msg.id === responseId
-                  ? { ...msg, content: fullResponse, isStreaming: true }
-                  : msg
-              )
-            );
-          }
-        } catch (parseError) {
-          // If chunk is not JSON (i.e., regular text content or incomplete JSON)
-          if (isFirstChunk) {
-            fullResponse = currentChunk;
-            isFirstChunk = false;
-          } else {
-            fullResponse += chunk;
-          }
-          setMessagesState(prev =>
-            prev.map(msg =>
-              msg.id === responseId
-                ? { ...msg, content: fullResponse, isStreaming: true }
-                : msg
-            )
-          );
+        // Update UI with streaming content
+        if (isFirstChunk) {
+          fullResponse = currentChunk;
+          isFirstChunk = false;
+        } else {
+          fullResponse += chunk;
         }
-      }
 
-      // After the inner loop, if no tool calls were detected, the AI's turn is over.
-      // If tool calls were detected, the loop will continue, and a new AI message will be created.
-      if (!toolCallsDetected) {
-        // Finalize the AI's message for this turn
-        setMessagesState(prev =>
-          prev.map(msg =>
+        // Update streaming message
+        setMessagesState((prev) =>
+          prev.map((msg) =>
             msg.id === responseId
-              ? { ...msg, isStreaming: false }
+              ? { ...msg, content: fullResponse, isStreaming: true }
               : msg
           )
         );
-        // Add the AI's final text response to the conversation history
-        currentConversation.push({ id: responseId, content: fullResponse, role: 'assistant' });
-      } else {
-        // If tool calls were detected, prepare for the next turn by creating a new AI message ID
-        responseId = (Date.now() + 1).toString();
-        fullResponse = '';
-        setMessagesState(prev => [...prev, { id: responseId, content: '', role: 'assistant', isStreaming: true }]);
+
+        // Let orchestrator process the chunk
+        const result = await aiOrchestrator.processStreamChunk(
+          chunk,
+          fullResponse,
+          currentConversation,
+          executeToolCall
+        );
+
+        if (result.toolCalls && result.toolCalls.length > 0) {
+          // Update UI to show tool usage
+          setMessagesState((prev) =>
+            prev.map((msg) =>
+              msg.id === responseId
+                ? {
+                    ...msg,
+                    content: fullResponse,
+                    thinking: `${aiOrchestrator.getDisplayName()} is using tools...`,
+                  }
+                : msg
+            )
+          );
+
+          // Execute tool calls and add results
+          for (const toolCall of result.toolCalls) {
+            const toolResult = await executeToolCall(toolCall);
+            setMessagesState((prev) => [
+              ...prev,
+              {
+                id: toolResult.tool_call_id,
+                content: toolResult.content,
+                role: toolResult.role as any,
+              },
+            ]);
+            currentConversation.push({
+              id: toolResult.tool_call_id,
+              content: toolResult.content,
+              role: toolResult.role as any,
+            });
+          }
+
+          turnComplete = true;
+          currentChunk = "";
+          break; // Break to start new AI turn
+        }
       }
 
-    } while (toolCallsDetected);
+      if (!turnComplete) {
+        // No tool calls, finalize this turn
+        setMessagesState((prev) =>
+          prev.map((msg) =>
+            msg.id === responseId ? { ...msg, isStreaming: false } : msg
+          )
+        );
+
+        currentConversation.push({
+          id: responseId,
+          content: fullResponse,
+          role: "assistant",
+        });
+
+        // Check if orchestrator wants to continue
+        const action = await aiOrchestrator.decideNextAction(
+          fullResponse,
+          currentConversation
+        );
+
+        conversationActive = action.action === "continue";
+      } else {
+        // Tool calls executed, prepare for next turn
+        responseId = (Date.now() + 1).toString();
+        fullResponse = "";
+        setMessagesState((prev) => [
+          ...prev,
+          {
+            id: responseId,
+            content: "",
+            role: "assistant",
+            isStreaming: true,
+          },
+        ]);
+
+        // Check if we should continue the conversation
+        conversationActive =
+          aiOrchestrator.shouldContinueConversation(currentConversation);
+      }
+    }
+
+    logger.info("AI stream completed", {
+      orchestrator: aiOrchestrator.getDisplayName(),
+    });
   };
 
   return { processAIStream };

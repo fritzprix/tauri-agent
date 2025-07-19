@@ -1,6 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { useAIStream } from '../hooks/use-ai-stream';
-import { useMCPAgent } from '../hooks/use-mcp-agent';
+import { useIntegratedAIAgent } from '../hooks/use-integrated-ai-agent';
 import {
   AIServiceConfig,
   AIServiceError,
@@ -32,6 +31,7 @@ interface AgentChatProps {
   messageWindowSize: number;
   currentRole: Role | null;
   aiServiceConfig: AIServiceConfig;
+  maxAgentTurns?: number; // New prop for customizing agent behavior
 }
 
 const AgentChat: React.FC<AgentChatProps> = ({
@@ -40,6 +40,7 @@ const AgentChat: React.FC<AgentChatProps> = ({
   selectedModel,
   messageWindowSize,
   aiServiceConfig,
+  maxAgentTurns = 5,
 }) => {
   const [agentMessages, setAgentMessages] = useState<MessageWithAttachments[]>([]);
   const [agentInput, setAgentInput] = useState('');
@@ -49,8 +50,13 @@ const AgentChat: React.FC<AgentChatProps> = ({
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  const { availableTools, showToolsDetail, setShowToolsDetail, executeToolCall, connectToMCP } = useMCPAgent();
-  const { processAIStream } = useAIStream();
+  const { 
+    runAgentMode, 
+    availableTools, 
+    showToolsDetail, 
+    setShowToolsDetail, 
+    connectToMCP 
+  } = useIntegratedAIAgent();
 
   // currentRole이 바뀔 때마다 MCP 서버에 연결하여 availableTools를 갱신
   useEffect(() => {
@@ -153,9 +159,10 @@ const AgentChat: React.FC<AgentChatProps> = ({
         systemPrompt += `\n\nAvailable tools: ${availableTools.map(t => `${t.name}: ${t.description}`).join(', ')}\nIf a tool call fails, analyze the error message and try to correct your approach.`;
       }
 
-      logger.info("tools: ", {availableTools});
+      logger.info("Starting agent mode with tools: ", {availableTools});
 
-      await processAIStream({
+      // Use the new agent mode
+      await runAgentMode({
         aiService,
         initialConversation: [...agentMessages, userMessage].map(msg => ({
           id: msg.id,
@@ -165,12 +172,9 @@ const AgentChat: React.FC<AgentChatProps> = ({
         setMessagesState: setAgentMessages,
         modelName: selectedModel || undefined,
         systemPrompt,
-        availableTools: availableTools.length > 0 ? availableTools : undefined,
         aiServiceConfig,
-        isAgentMode: true,
-        executeToolCall,
         messageWindowSize,
-      });
+      }, maxAgentTurns);
 
     } catch (error) {
       logger.error('Error sending agent message:', {error});
@@ -198,9 +202,8 @@ const AgentChat: React.FC<AgentChatProps> = ({
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [agentMessages]);
 
-
   return (
-    <div className="flex-1 p-4 overflow-y-auto space-y-2 pb-20 terminal-scrollbar">
+    <div className="flex-1 p-4 overflow-y-auto space-y-2 pb-32 terminal-scrollbar">
       {agentMessages.map(m => (
         <MessageBubble key={m.id} message={m} currentRoleName={currentRole?.name} />
       ))}
@@ -208,7 +211,7 @@ const AgentChat: React.FC<AgentChatProps> = ({
       {isAgentLoading && (
         <div className="flex justify-start">
           <div className="bg-gray-800/50 text-gray-200 rounded px-3 py-2">
-            <div className="text-xs text-gray-400 mb-1">Agent ({currentRole?.name})</div>
+            <div className="text-xs text-gray-400 mb-1">Agent ({currentRole?.name}) - Max {maxAgentTurns} turns</div>
             <div className="text-sm">thinking...</div>
           </div>
         </div>
@@ -275,6 +278,24 @@ const AgentChat: React.FC<AgentChatProps> = ({
           </div>
         </div>
       )}
+
+      {/* Tools Status Bar - Add this above the input area */}
+      <div className="absolute bottom-16 left-0 right-0 bg-gray-900/90 px-4 py-2 border-t border-gray-700 flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-gray-400">Role:</span>
+          <span className="text-xs text-green-400">{currentRole?.name || 'None'}</span>
+        </div>
+        
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-gray-400">Tools:</span>
+          <button
+            onClick={() => setShowToolsDetail(true)}
+            className="text-xs text-blue-400 hover:text-blue-300 transition-colors flex items-center gap-1"
+          >
+            🔧 {availableTools.length} available
+          </button>
+        </div>
+      </div>
 
       {/* Attached Files Display */}
       {attachedFiles.length > 0 && (
