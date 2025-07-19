@@ -9,6 +9,7 @@ import {
   Input
 } from './ui';
 import { useRoleManager } from '../context/RoleContext';
+import { useMCPAgent } from '../hooks/use-mcp-agent';
 
 const logger = getLogger('SimpleChat');
 
@@ -39,6 +40,13 @@ const SimpleChat: React.FC<SimpleChatProps> = ({
 
   const { processAIStream } = useAIStream();
   const { currentRole } = useRoleManager();
+  const { availableTools, connectToMCP } = useMCPAgent();
+
+  useEffect(() => {
+    if (currentRole) {
+      connectToMCP(currentRole);
+    }
+  }, [currentRole]);
 
   // Helper function to get AI service instance
   const getAIService = (): IAIService => {
@@ -87,14 +95,14 @@ const SimpleChat: React.FC<SimpleChatProps> = ({
         setMessagesState: setMessages,
         modelName: selectedModel || undefined,
         systemPrompt: currentRole?.systemPrompt,
-        availableTools: undefined, // Simple chat mode does not use tools
+        availableTools: availableTools.length > 0 ? availableTools : undefined, // Simple chat mode does not use tools
         aiServiceConfig,
         isAgentMode: false,
         executeToolCall: async () => { throw new Error('Tool calls not supported in simple chat mode'); }, // Placeholder
         messageWindowSize,
       });
     } catch (error) {
-      logger.error('Error sending message:', {error});
+      logger.error('Error sending message:', { error });
 
       let errorMessage = 'Unknown error occurred';
       if (error instanceof AIServiceError) {

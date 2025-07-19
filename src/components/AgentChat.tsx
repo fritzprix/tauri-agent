@@ -49,8 +49,15 @@ const AgentChat: React.FC<AgentChatProps> = ({
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  const { availableTools, showToolsDetail, setShowToolsDetail, executeToolCall } = useMCPAgent();
+  const { availableTools, showToolsDetail, setShowToolsDetail, executeToolCall, connectToMCP } = useMCPAgent();
   const { processAIStream } = useAIStream();
+
+  // currentRole이 바뀔 때마다 MCP 서버에 연결하여 availableTools를 갱신
+  useEffect(() => {
+    if (currentRole) {
+      connectToMCP(currentRole);
+    }
+  }, [currentRole, connectToMCP]);
 
   // Helper function to get AI service instance
   const getAIService = (): IAIService => {
