@@ -37,30 +37,28 @@ function getDefaultRole(): Role {
 export const RoleContextProvider = ({ children }: { children: ReactNode }) => {
 
   const [currentRole, setCurrentRole] = useState<Role | null>(null);
-  const [{ value, loading, error }, load] = useAsyncFn(dbService.getRoles, []);
-  const { connectToMCP, mcpServerStatus, isMCPConnecting } = useMCPServer();
-  const [, createAndUpdate] = useAsyncFn(async (role: Role) => {
-    await dbService.createRole(role);
-    await load();
-    return role;
-  }, [load]);
+  const [{ value: roles, loading, error }, loadRoles] = useAsyncFn(async () => {
+    let fetchedRoles = await dbService.getRoles();
+    if (fetchedRoles.length === 0) {
+      const defaultRole = getDefaultRole();
+      await dbService.upsertRole(defaultRole);
+      fetchedRoles = [defaultRole];
+    }
+    return fetchedRoles;
+  }, []);
 
+  const { connectToMCP } = useMCPServer();
 
   useEffect(() => {
-    if (!loading) {
-      logger.info("init : ", {loading, value});
-      if (!value || value.length === 0) {
-        createAndUpdate(getDefaultRole()).then(newRole => {
-            if (newRole) {
-              setCurrentRole(newRole);
-            }
-          });
-      } else {
-        const r = value.find(r => r.isDefault) || value[0];
-        setCurrentRole(r);
-      }
+    loadRoles();
+  }, [loadRoles]);
+
+  useEffect(() => {
+    if (!loading && roles) {
+      const r = roles.find(r => r.isDefault) || roles[0];
+      setCurrentRole(r);
     }
-  }, [load, value, loading, createAndUpdate]);
+  }, [loading, roles]);
 
   useEffect(() => {
     if (currentRole) {
@@ -119,18 +117,22 @@ export const RoleContextProvider = ({ children }: { children: ReactNode }) => {
       } catch (error) {
         logger.error('Error deleting role:', { error });
         alert('역할 삭제 중 오류가 발생했습니다.');
+      } finally {
+        await loadRoles();
       }
     }
   }, []);
 
+  logger.info("role context : ", {roles: roles?.length});
+
   const contextValue: RoleContextType = useMemo(() => ({
-    roles: value || [],
+    roles: roles || [],
     currentRole,
     setCurrentRole,
     saveRole,
     deleteRole,
     error: error ?? null,
-  }), [value, currentRole, setCurrentRole, saveRole, deleteRole, mcpServerStatus, isMCPConnecting, error]);
+  }), [roles, currentRole, setCurrentRole, saveRole, deleteRole, error]);
 
   return (
     <RoleContext.Provider value={contextValue}>

@@ -13,7 +13,7 @@ import { ToolCaller } from './ToolCaller';
 
 const logger = getLogger('SimpleChat');
 
-interface SimpleChatProps {}
+interface SimpleChatProps { }
 
 const SimpleChat: React.FC<SimpleChatProps> = () => {
   const { messages, submit, isLoading } = useChatContext();
@@ -65,6 +65,10 @@ const SimpleChat: React.FC<SimpleChatProps> = () => {
         </div>
       )}
 
+
+      <div ref={messagesEndRef} />
+
+
       <div className="absolute bottom-16 left-0 right-0 bg-gray-900/90 px-4 py-2 border-t border-gray-700 flex items-center justify-center">
         <button
           onClick={() => setShowToolsDetail(true)}
@@ -78,8 +82,6 @@ const SimpleChat: React.FC<SimpleChatProps> = () => {
         isOpen={showToolsDetail}
         onClose={() => setShowToolsDetail(false)}
       />
-
-      <div ref={messagesEndRef} />
 
       <form
         onSubmit={handleSubmit}

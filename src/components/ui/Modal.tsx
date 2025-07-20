@@ -28,10 +28,10 @@ export default function Modal({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50">
-      <div className={`bg-gray-900 border border-gray-700 rounded-lg w-[90%] ${sizeClasses[size]} max-h-[80vh] flex flex-col`}>
+    <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
+      <div className={`bg-gray-900 border border-gray-700 rounded-lg w-full ${sizeClasses[size]} h-[80vh] flex flex-col`}>
         {/* Header */}
-        <div className="flex justify-between items-center p-4 border-b border-gray-700">
+        <div className="flex justify-between items-center p-4 border-b border-gray-700 flex-shrink-0">
           <h2 className="text-green-400 font-bold text-lg">{title}</h2>
           {showCloseButton && (
             <Button
@@ -45,8 +45,8 @@ export default function Modal({
           )}
         </div>
         
-        {/* Content */}
-        <div className="flex-1 overflow-hidden">
+        {/* Content - Fixed height container */}
+        <div className="flex-1 min-h-0">
           {children}
         </div>
       </div>
