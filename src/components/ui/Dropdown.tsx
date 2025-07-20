@@ -1,23 +1,23 @@
-import React, {  FC } from 'react';
+import React from 'react';
 
 
 interface DropdownOption {
-    value: string;
-    label: string;
-    disabled?: boolean;
+  value: string;
+  label: string;
+  disabled?: boolean;
 }
 
-interface DropdownProps {
-    options: DropdownOption[];
-    value?: string;
-    onChange: (value: string) => void;
-    placeholder: string;
-    disabled?: boolean;
-    className?: string;
-    variant?: 'default' | 'compact';
+interface DropdownProps<T> {
+  options: DropdownOption[];
+  value?: T;
+  onChange: (value: T) => void;
+  placeholder: string;
+  disabled?: boolean;
+  className?: string;
+  variant?: 'default' | 'compact';
 }
 
-export const Dropdown: FC<DropdownProps> = ({ options, value, onChange, placeholder, disabled, className = '', variant = 'default' }) => {
+export function Dropdown<T>({ options, value, onChange, placeholder, disabled, className = '', variant = 'default' }: DropdownProps<T>) {
   const baseClasses = `w-full appearance-none rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 transition-colors duration-200`;
   const variantClasses = {
     default: `bg-gray-800 border border-green-600/30 text-green-300 focus:ring-green-500/50 focus:border-green-500 disabled:bg-gray-900/50 disabled:text-gray-500`,
@@ -27,8 +27,8 @@ export const Dropdown: FC<DropdownProps> = ({ options, value, onChange, placehol
   return (
     <div className={`relative ${className}`}>
       <select
-        value={value || ''}
-        onChange={(e: React.ChangeEvent<HTMLSelectElement>) => onChange(e.target.value)}
+        value={typeof value === "string" ? value : `${value}`}
+        onChange={(e: React.ChangeEvent<HTMLSelectElement>) => onChange(e.target.value as T)}
         disabled={disabled}
         className={`${baseClasses} ${variantClasses[variant]} disabled:cursor-not-allowed`}
       >

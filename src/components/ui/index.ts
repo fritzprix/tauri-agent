@@ -5,7 +5,7 @@ export { default as FileAttachment } from './FileAttachment';
 export { default as Input } from './Input';
 export { default as LoadingSpinner } from './LoadingSpinner';
 export { default as Modal } from './Modal';
-export { CompactModelPicker, TerminalModelPicker } from './ModelPicker';
+export { CompactModelPicker, TerminalModelPicker } from '../ModelPicker';
 export { default as StatusIndicator } from './StatusIndicator';
 export { Tabs, TabsList, TabsTrigger, TabsContent } from './Tabs';
 export { default as Textarea } from './Textarea';

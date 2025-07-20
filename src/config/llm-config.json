@@ -237,7 +237,7 @@
         }
       }
     },
-    "google": {
+    "gemini": {
       "name": "Google",
       "apiKeyEnvVar": "GOOGLE_API_KEY",
       "baseUrl": "https://generativelanguage.googleapis.com/v1beta",
@@ -316,98 +316,5 @@
         }
       }
     }
-  },
-  "serviceConfigs": {
-    "default": {
-      "provider": "groq",
-      "model": "llama-3.3-70b-versatile",
-      "temperature": 0.7,
-      "maxTokens": 4096,
-      "topP": 1.0,
-      "frequencyPenalty": 0.0,
-      "presencePenalty": 0.0
-    },
-    "reasoning": {
-      "provider": "anthropic",
-      "model": "claude-sonnet-4-20250514",
-      "temperature": 0.3,
-      "maxTokens": 8192,
-      "topP": 0.9,
-      "frequencyPenalty": 0.0,
-      "presencePenalty": 0.0
-    },
-    "advanced-reasoning": {
-      "provider": "openai",
-      "model": "o4-mini",
-      "temperature": 0.1,
-      "maxTokens": 8192,
-      "topP": 0.8,
-      "frequencyPenalty": 0.0,
-      "presencePenalty": 0.0
-    },
-    "creative": {
-      "provider": "anthropic",
-      "model": "claude-opus-4-20250514",
-      "temperature": 0.9,
-      "maxTokens": 4096,
-      "topP": 1.0,
-      "frequencyPenalty": 0.1,
-      "presencePenalty": 0.1
-    },
-    "fast": {
-      "provider": "groq",
-      "model": "llama-3.1-8b-instant",
-      "temperature": 0.5,
-      "maxTokens": 2048,
-      "topP": 0.95,
-      "frequencyPenalty": 0.0,
-      "presencePenalty": 0.0
-    },
-    "cost-efficient": {
-      "provider": "google",
-      "model": "gemini-2.5-flash-lite",
-      "temperature": 0.5,
-      "maxTokens": 4096,
-      "topP": 0.9,
-      "frequencyPenalty": 0.0,
-      "presencePenalty": 0.0
-    },
-    "long-context": {
-      "provider": "google",
-      "model": "gemini-2.5-pro",
-      "temperature": 0.3,
-      "maxTokens": 8192,
-      "topP": 0.9,
-      "frequencyPenalty": 0.0,
-      "presencePenalty": 0.0
-    },
-    "coding": {
-      "provider": "openai",
-      "model": "gpt-4.1",
-      "temperature": 0.1,
-      "maxTokens": 4096,
-      "topP": 0.8,
-      "frequencyPenalty": 0.0,
-      "presencePenalty": 0.0
-    },
-    "image-generation": {
-      "provider": "openai",
-      "model": "gpt-image-1",
-      "temperature": 0.7,
-      "maxTokens": 1024,
-      "topP": 1.0,
-      "frequencyPenalty": 0.0,
-      "presencePenalty": 0.0
-    }
-  },
-  "preferences": {
-    "defaultService": "default",
-    "fallbackService": "fast",
-    "retryAttempts": 3,
-    "timeoutMs": 45000,
-    "enableCaching": true,
-    "enableLogging": true,
-    "costOptimization": true,
-    "autoModelSelection": false
   }
 }

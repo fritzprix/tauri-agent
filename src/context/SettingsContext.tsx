@@ -1,137 +1,100 @@
-import React, { createContext, ReactNode, useEffect, useState, useContext, useCallback } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useMemo } from 'react';
+import { useAsyncFn } from "react-use";
 import { AIServiceProvider } from '../lib/ai-service';
-import { dbService, Role } from '../lib/db';
+import { dbService } from '../lib/db';
+import { llmConfigManager } from '../lib/llm-config-manager';
 import { getLogger } from '../lib/logger';
 
 const logger = getLogger('SettingsContext');
 
-interface SettingsContextType {
-  // LLM & API Settings
-  apiKeys: Record<AIServiceProvider, string>;
-  setApiKeys: (keys: Record<AIServiceProvider, string>) => Promise<void>;
-  selectedProvider: string | undefined;
-  setSelectedProvider: (provider: string | undefined) => Promise<void>;
-  selectedModel: string | undefined;
-  setSelectedModel: (model: string | undefined) => Promise<void>;
-  messageWindowSize: number;
-  setMessageWindowSize: (size: number) => Promise<void>;
+interface ModelChoice {
+  provider: AIServiceProvider;
+  model: string;
+}
 
-  // Role Management
-  roles: Role[];
-  saveRole: (role: Role) => Promise<void>;
-  deleteRole: (roleId: string) => Promise<void>;
-  isRolesLoading: boolean;
+export interface Settings {
+  apiKeys: Record<AIServiceProvider, string>;
+  preferredModel: ModelChoice;
+  windowSize: number;
+}
+
+const DEFAULT_MODEL = llmConfigManager.recommendModel({});
+
+
+export const DEFAULT_SETTING: Settings = {
+  apiKeys: {} as Record<AIServiceProvider, string>,
+  preferredModel: {
+    provider: (DEFAULT_MODEL?.providerId || "openai") as AIServiceProvider,
+    model: (DEFAULT_MODEL?.modelId || ""),
+  },
+  windowSize: 20
+}
+
+
+interface SettingsContextType {
+  value: Settings;
+  update: (settings: Partial<Settings>) => Promise<void>;
+  isLoading: boolean;
+  error: Error | null;
 }
 
 export const SettingsContext = createContext<SettingsContextType | undefined>(undefined);
 
-export const SettingsProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  // State
-  const [apiKeys, setApiKeysState] = useState<Record<AIServiceProvider, string>>(() => ({} as Record<AIServiceProvider, string>));
-  const [selectedProvider, setSelectedProviderState] = useState<string | undefined>();
-  const [selectedModel, setSelectedModelState] = useState<string | undefined>();
-  const [messageWindowSize, setMessageWindowSizeState] = useState<number>(50);
-  const [roles, setRoles] = useState<Role[]>([]);
-  const [isRolesLoading, setIsRolesLoading] = useState(true);
-
-  // --- API & LLM Settings ---
-  const setApiKeys = async (keys: Record<AIServiceProvider, string>) => {
-    setApiKeysState(keys);
-    await dbService.saveSetting('apiKeys', keys);
-  };
-
-  const setSelectedProvider = async (provider: string | undefined) => {
-    setSelectedProviderState(provider);
-    const currentSettings = await dbService.getSetting<{ provider: string; model: string }>('llm');
-    await dbService.saveSetting('llm', { ...currentSettings, provider: provider || '' });
-  };
-
-  const setSelectedModel = async (model: string | undefined) => {
-    setSelectedModelState(model);
-    const currentSettings = await dbService.getSetting<{ provider: string; model: string }>('llm');
-    await dbService.saveSetting('llm', { ...currentSettings, model: model || '' });
-  };
-
-  const setMessageWindowSize = async (size: number) => {
-    setMessageWindowSizeState(size);
-    await dbService.saveSetting('messageWindowSize', size);
-  };
-
-  // --- Role Management ---
-  const loadRoles = useCallback(async () => {
-    setIsRolesLoading(true);
+export function SettingsProvider({ children }: { children: React.ReactNode }) {
+  const [{ value, loading, error }, load] = useAsyncFn(async () => {
     try {
-      let rolesFromDb = await dbService.getRoles();
-      if (rolesFromDb.length === 0) {
-        logger.info('No roles found, creating default role.');
-        const defaultRole: Role = {
-          id: `role_${Date.now()}`,
-          name: 'Default Role',
-          systemPrompt: 'You are a helpful AI assistant.',
-          mcpConfig: { mcpServers: {} },
-          isDefault: true,
-          createdAt: new Date(),
-          updatedAt: new Date(),
-        };
-        await dbService.saveRole(defaultRole);
-        rolesFromDb = [defaultRole];
-      }
-      setRoles(rolesFromDb);
-    } catch (error) {
-      logger.error('Error loading roles from DB:', { error });
-      setRoles([]);
-    } finally {
-      setIsRolesLoading(false);
+      const [apiKeys, preferredModel, windowSize] = await Promise.all([
+        dbService.getSetting<Record<AIServiceProvider, string>>('apiKeys'),
+        dbService.getSetting<ModelChoice>('preferredModel'),
+        dbService.getSetting<number>('windowSize')
+      ]);
+      const settings: Settings = {
+        ...DEFAULT_SETTING,
+        ...(apiKeys ? { apiKeys } : {}),
+        ...(preferredModel ? { preferredModel } : {}),
+        ...(windowSize != null ? { windowSize } : {})
+      };
+      return settings;
+    } catch (e) {
+      logger.error('Failed to load settings', e);
+      throw e;
     }
   }, []);
 
-  const saveRole = async (role: Role) => {
-    await dbService.saveRole(role);
-    await loadRoles(); // Reload roles after saving
-  };
-
-  const deleteRole = async (roleId: string) => {
-    await dbService.deleteRole(roleId);
-    await loadRoles(); // Reload roles after deleting
-  };
-
-  // --- Initial Load ---
   useEffect(() => {
-    const loadInitialSettings = async () => {
-      const [savedKeys, savedLLMSettings, savedSize] = await Promise.all([
-        dbService.getSetting<Record<AIServiceProvider, string>>('apiKeys'),
-        dbService.getSetting<{ provider: string; model: string }>('llm'),
-        dbService.getSetting<number>('messageWindowSize'),
-        loadRoles(),
-      ]);
+    load()
+  }, [load]);
 
-      if (savedKeys) setApiKeysState(savedKeys);
-      if (savedLLMSettings) {
-        setSelectedProviderState(savedLLMSettings.provider);
-        setSelectedModelState(savedLLMSettings.model);
+  // Update method
+  const update = useCallback(async (settings: Partial<Settings>) => {
+    try {
+      if (settings.apiKeys) {
+        await dbService.saveSetting('apiKeys', settings.apiKeys);
       }
-      if (savedSize) setMessageWindowSizeState(savedSize);
-    };
-    loadInitialSettings();
-  }, [loadRoles]);
+      if (settings.preferredModel) {
+        await dbService.saveSetting('preferredModel', settings.preferredModel);
+      }
+      if (settings.windowSize != null) {
+        await dbService.saveSetting('windowSize', settings.windowSize);
+      }
+      await load();
+    } catch (e) {
+      logger.error('Failed to update settings', e);
+      throw e;
+    }
+  }, [load]);
 
-  const value = {
-    apiKeys,
-    setApiKeys,
-    selectedProvider,
-    setSelectedProvider,
-    selectedModel,
-    setSelectedModel,
-    messageWindowSize,
-    setMessageWindowSize,
-    roles,
-    saveRole,
-    deleteRole,
-    isRolesLoading,
-  };
+  const contextValue: SettingsContextType = useMemo(() => {
+    return {
+      value: value || DEFAULT_SETTING,
+      isLoading: loading,
+      update,
+      error: error ?? null
+    };
+  }, [value, loading, update, error]);
 
   return (
-    <SettingsContext.Provider value={value}>
+    <SettingsContext.Provider value={contextValue}>
       {children}
     </SettingsContext.Provider>
   );

@@ -12,6 +12,9 @@ import { ChatCompletionTool as GroqChatCompletionTool } from "groq-sdk/resources
 import { ChatCompletionTool as OpenAIChatCompletionTool } from "openai/resources/chat/completions.mjs";
 import { MessageParam as AnthropicMessageParam, Tool as AnthropicTool } from "@anthropic-ai/sdk/resources/messages.mjs";
 import { MCPTool } from "./tauri-mcp-client";
+import { getLogger } from "./logger";
+
+const logger = getLogger("AIService");
 
 // --- Configuration and Types ---
 
@@ -29,7 +32,9 @@ export enum AIServiceProvider {
   OpenAI = 'openai',
   Anthropic = 'anthropic',
   Gemini = 'gemini',
+  Empty = 'empty',
 }
+
 
 export interface StreamableMessage {
   id: string;
@@ -41,6 +46,7 @@ export interface StreamableMessage {
   tool_calls?: { id: string; type: 'function'; function: { name: string; arguments: string; } }[];
   tool_use?: { id: string; name: string; input: Record<string, unknown> };
   function_call?: { name: string; arguments: Record<string, unknown> };
+  tool_call_id?: string;
 }
 
 export class AIServiceError extends Error {
@@ -63,6 +69,7 @@ class MessageValidator {
       throw new Error('Message must have a valid id');
     }
     if (!message.content || typeof message.content !== 'string') {
+      logger.error(`Invalid message content: `, { message});
       throw new Error('Message must have valid content');
     }
     if (!['user', 'assistant', 'system', 'tool'].includes(message.role)) {
@@ -144,6 +151,11 @@ function convertMCPToolToProviderFormat(mcpTool: MCPTool, provider: AIServicePro
           required: required,
         },
       };
+    case AIServiceProvider.Empty:
+      throw new AIServiceError(
+        `Tool conversion not supported for Empty AIServiceProvider`,
+        AIServiceProvider.Empty
+      );
   }
 }
 
@@ -251,6 +263,34 @@ abstract class BaseAIService implements IAIService {
 
   abstract getProvider(): AIServiceProvider;
   abstract dispose(): void;
+}
+
+
+export class EmptyAIService extends BaseAIService {
+  constructor() {
+    super('empty_api_key'); // Dummy API key
+  }
+
+  getProvider(): AIServiceProvider {
+    return AIServiceProvider.Empty;
+  }
+
+  async *streamChat(
+    _messages: StreamableMessage[],
+    _options?: {
+      modelName?: string;
+      systemPrompt?: string;
+      availableTools?: MCPTool[];
+      config?: AIServiceConfig;
+    }
+  ): AsyncGenerator<string, void, unknown> {
+    throw new AIServiceError("EmptyAIService does not support streaming chat", AIServiceProvider.Empty);
+    // Yield nothing, this is an empty service
+  }
+
+  dispose(): void {
+    // No-op
+  }
 }
 
 // --- Enhanced Service Implementations ---
@@ -611,21 +651,28 @@ export class AIServiceFactory {
     }
 
     let service: IAIService;
-    switch (provider) {
-      case AIServiceProvider.Groq:
-        service = new GroqService(apiKey, config);
-        break;
-      case AIServiceProvider.OpenAI:
-        service = new OpenAIService(apiKey, config);
-        break;
-      case AIServiceProvider.Anthropic:
-        service = new AnthropicService(apiKey, config);
-        break;
-      case AIServiceProvider.Gemini:
-        service = new GeminiService(apiKey, config);
-        break;
-      default:
-        throw new AIServiceError(`Unknown AI service provider: ${provider}`, provider);
+    try {
+      switch (provider) {
+        case AIServiceProvider.Groq:
+          service = new GroqService(apiKey, config);
+          break;
+        case AIServiceProvider.OpenAI:
+          service = new OpenAIService(apiKey, config);
+          break;
+        case AIServiceProvider.Anthropic:
+          service = new AnthropicService(apiKey, config);
+          break;
+        case AIServiceProvider.Gemini:
+          service = new GeminiService(apiKey, config);
+          break;
+        default:
+          logger.warn(`Unknown AI service provider: ${provider}. Returning EmptyAIService.`);
+          service = new EmptyAIService();
+          break;
+      }
+    } catch (e) {
+      logger.error(`Failed to create service for provider ${provider} with error: ${e}. Returning EmptyAIService.`);
+      service = new EmptyAIService();
     }
 
     this.instances.set(instanceKey, {

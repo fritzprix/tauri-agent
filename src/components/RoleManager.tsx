@@ -1,17 +1,18 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
+import { useRoleContext } from '../context/RoleContext';
 import { Role } from '../lib/db';
-import { 
-  Modal, 
-  Button, 
-  Input, 
-  Textarea, 
-  StatusIndicator, 
-  Badge 
-} from './ui';
 import { getLogger } from '../lib/logger';
-import { useRoleManager } from '../context/RoleContext';
+import {
+  Badge,
+  Button,
+  Input,
+  Modal,
+  StatusIndicator,
+  Textarea
+} from './ui';
+import { useMCPServer } from '../hooks/use-mcp-server';
 
 const logger = getLogger('RoleManager');
 
@@ -20,29 +21,16 @@ interface RoleManagerProps {
 }
 
 export default function RoleManager({ onClose }: RoleManagerProps) {
-  const {
-    roles,
-    currentRole,
-    setCurrentRole,
-    saveRole,
-    deleteRole,
-    serverStatuses,
-    checkServerStatuses,
-    isCheckingStatus,
-  } = useRoleManager();
+  const { currentRole, roles, saveRole, deleteRole, setCurrentRole } = useRoleContext();
+  const { mcpServerStatus: serverStatus, isMCPConnecting: isCheckingStatus, connectToMCP } = useMCPServer();
+
+  // MCP server status logic is now handled elsewhere or can be stubbed/removed if not needed
+  const checkServerStatuses = (_role: Role) => {};
 
   const [editingRole, setEditingRole] = useState<Partial<Role> | null>(null);
   const [isCreating, setIsCreating] = useState(false);
   const [mcpConfigText, setMcpConfigText] = useState('');
   
-  useEffect(() => {
-    // When editing a role, if that role is the current one,
-    // update the statuses displayed in the editor.
-    if (editingRole && currentRole && editingRole.id === currentRole.id) {
-        // The statuses are already being managed by the context for the current role.
-        // No extra check is needed here unless we want to force a refresh.
-    }
-  }, [serverStatuses, editingRole, currentRole]);
 
   const handleCreateNew = () => {
     setIsCreating(true);
@@ -79,25 +67,37 @@ export default function RoleManager({ onClose }: RoleManagerProps) {
 
   const handleSaveRole = async () => {
     if (!editingRole) return;
-
-    const saved = await saveRole(editingRole, mcpConfigText);
-    if (saved) {
-      setEditingRole(null);
-      setIsCreating(false);
-      setMcpConfigText('');
-      logger.debug(`Role "${saved.name}" saved successfully`);
+    let roleToSave = { ...editingRole } as Role;
+    try {
+      // Parse MCP config from text
+      if (mcpConfigText) {
+        roleToSave.mcpConfig = JSON.parse(mcpConfigText);
+      }
+    } catch {
+      alert('유효하지 않은 JSON 형식입니다. JSON을 확인해주세요.');
+      return;
     }
+    
+    await saveRole(editingRole, mcpConfigText);
+    setEditingRole(null);
+    setIsCreating(false);
+    setMcpConfigText('');
+    logger.debug(`Role "${roleToSave.name}" saved successfully`);
   };
   
   const handleSelectRole = (role: Role) => {
     setCurrentRole(role);
-  }
+    connectToMCP(role);
+  };
 
   const handleDeleteRole = async (roleId: string) => {
     if (editingRole?.id === roleId) {
-        handleCancel();
+      handleCancel();
     }
-    await deleteRole(roleId);
+    // Only delete if the selected role matches
+    if (currentRole && currentRole.id === roleId) {
+      await deleteRole('role');
+    }
   };
 
   const handleCancel = () => {
@@ -187,8 +187,8 @@ export default function RoleManager({ onClose }: RoleManagerProps) {
                           >
                             <StatusIndicator 
                               status={
-                                serverStatuses[serverName] === true ? 'connected' : 
-                                serverStatuses[serverName] === false ? 'disconnected' : 'unknown'
+                                serverStatus[serverName] === true ? 'connected' : 
+                                serverStatus[serverName] === false ? 'disconnected' : 'unknown'
                               }
                               size="sm"
                             />
@@ -308,11 +308,11 @@ export default function RoleManager({ onClose }: RoleManagerProps) {
                     * mcpServers 형식만 사용됩니다. 빈 객체로 두면 MCP 서버를 사용하지 않습니다.
                   </div>
                   
-                  {editingRole && Object.keys(serverStatuses).length > 0 && (
+                  {editingRole && Object.keys(serverStatus).length > 0 && (
                     <div className="mt-3 p-2 bg-gray-900 rounded border border-gray-700">
                       <div className="text-xs text-gray-400 mb-2">에디터 서버 상태:</div>
                       <div className="flex flex-wrap gap-2">
-                        {Object.entries(serverStatuses).map(([serverName, isConnected]) => (
+                        {Object.entries(serverStatus).map(([serverName, isConnected]) => (
                           <div
                             key={serverName}
                             className="flex items-center gap-1 text-xs px-2 py-1 rounded bg-gray-800"

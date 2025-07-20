@@ -1,85 +1,30 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { useIntegratedAIAgent } from '../hooks/use-integrated-ai-agent';
-import {
-  AIServiceConfig,
-  AIServiceError,
-  AIServiceFactory,
-  AIServiceProvider,
-  IAIService,
-  StreamableMessage
-} from '../lib/ai-service';
-import { Role } from '../lib/db';
+import { useRoleContext } from '../context/RoleContext';
+import { useChatContext } from '../hooks/use-chat';
+import { useMCPServer } from '../hooks/use-mcp-server';
+import { StreamableMessage } from '../lib/ai-service';
 import { getLogger } from '../lib/logger';
 import MessageBubble from './MessageBubble';
+import { ToolCaller } from './ToolCaller';
+import ToolsModal from './ToolsModal';
 import {
   Button,
   FileAttachment,
   Input
 } from './ui';
-import { useRoleManager } from '../context/RoleContext';
 
 const logger = getLogger('AgentChat');
 
-interface MessageWithAttachments extends StreamableMessage {
-  attachments?: { name: string; content: string; }[];
-}
 
-interface AgentChatProps {
-  apiKeys: Record<AIServiceProvider, string>;
-  selectedProvider?: string;
-  selectedModel?: string;
-  messageWindowSize: number;
-  currentRole: Role | null;
-  aiServiceConfig: AIServiceConfig;
-  maxAgentTurns?: number; // New prop for customizing agent behavior
-}
-
-const AgentChat: React.FC<AgentChatProps> = ({
-  apiKeys,
-  selectedProvider,
-  selectedModel,
-  messageWindowSize,
-  aiServiceConfig,
-  maxAgentTurns = 5,
-}) => {
-  const [agentMessages, setAgentMessages] = useState<MessageWithAttachments[]>([]);
+const AgentChat: React.FC = () => {
+  const { messages, submit, isLoading } = useChatContext();
   const [agentInput, setAgentInput] = useState('');
-  const [isAgentLoading, setIsAgentLoading] = useState(false);
   const [attachedFiles, setAttachedFiles] = useState<{ name: string; content: string; }[]>([]);
-  const { currentRole } = useRoleManager();
+  const { availableTools } = useMCPServer();
+  const [showToolsDetail, setShowToolsDetail] = useState(false);
+  const { currentRole } = useRoleContext();
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
-
-  const { 
-    runAgentMode, 
-    availableTools, 
-    showToolsDetail, 
-    setShowToolsDetail, 
-    connectToMCP 
-  } = useIntegratedAIAgent();
-
-  // currentRole이 바뀔 때마다 MCP 서버에 연결하여 availableTools를 갱신
-  useEffect(() => {
-    if (currentRole) {
-      connectToMCP(currentRole);
-    }
-  }, [currentRole, connectToMCP]);
-
-  // Helper function to get AI service instance
-  const getAIService = (): IAIService => {
-    if (!selectedProvider) {
-      throw new AIServiceError('No AI provider selected', AIServiceProvider.OpenAI);
-    }
-
-    const provider = selectedProvider as AIServiceProvider;
-    const apiKey = apiKeys[provider];
-
-    if (!apiKey) {
-      throw new AIServiceError(`No API key configured for ${provider}`, provider);
-    }
-
-    return AIServiceFactory.getService(provider, apiKey, aiServiceConfig);
-  };
 
   const handleAgentInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setAgentInput(e.target.value);
@@ -93,14 +38,11 @@ const AgentChat: React.FC<AgentChatProps> = ({
 
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
-
-      // Only allow text files
       if (!file.type.startsWith('text/') && !file.name.match(/\.(txt|md|json|js|ts|tsx|jsx|py|java|cpp|c|h|css|html|xml|yaml|yml|csv)$/i)) {
         alert(`File "${file.name}" is not a supported text file format.`);
         continue;
       }
 
-      // Check file size (max 1MB)
       if (file.size > 1024 * 1024) {
         alert(`File "${file.name}" is too large. Maximum size is 1MB.`);
         continue;
@@ -116,7 +58,6 @@ const AgentChat: React.FC<AgentChatProps> = ({
     }
 
     setAttachedFiles(prev => [...prev, ...newAttachedFiles]);
-    // Reset the input to allow selecting the same file again
     e.target.value = '';
   };
 
@@ -125,7 +66,7 @@ const AgentChat: React.FC<AgentChatProps> = ({
   };
 
   const handleAgentSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
-    logger.debug("submit!!!", {currentRole, agentInput});
+    logger.info("submit!!", currentRole);
     e.preventDefault();
     if (!agentInput.trim() && attachedFiles.length === 0) return;
     if (!currentRole) return;
@@ -138,148 +79,48 @@ const AgentChat: React.FC<AgentChatProps> = ({
       });
     }
 
-    const userMessage: MessageWithAttachments = {
+    const userMessage: StreamableMessage = {
       id: Date.now().toString(),
       content: messageContent,
       role: 'user',
-      attachments: attachedFiles.length > 0 ? [...attachedFiles] : undefined
     };
 
-    setAgentMessages((prev) => [...prev, userMessage]);
     setAgentInput('');
     setAttachedFiles([]);
-    setIsAgentLoading(true);
 
     try {
-      const aiService = getAIService();
-
-      // System prompt 생성
-      let systemPrompt = currentRole.systemPrompt || "You are a helpful AI assistant.";
-      if (availableTools.length > 0) {
-        systemPrompt += `\n\nAvailable tools: ${availableTools.map(t => `${t.name}: ${t.description}`).join(', ')}\nIf a tool call fails, analyze the error message and try to correct your approach.`;
-      }
-
-      logger.info("Starting agent mode with tools: ", {availableTools});
-
-      // Use the new agent mode
-      await runAgentMode({
-        aiService,
-        initialConversation: [...agentMessages, userMessage].map(msg => ({
-          id: msg.id,
-          content: msg.content,
-          role: msg.role as 'user' | 'assistant' | 'system' | 'tool'
-        })),
-        setMessagesState: setAgentMessages,
-        modelName: selectedModel || undefined,
-        systemPrompt,
-        aiServiceConfig,
-        messageWindowSize,
-      }, maxAgentTurns);
-
-    } catch (error) {
-      logger.error('Error sending agent message:', {error});
-
-      let errorMessage = 'Unknown error occurred';
-      if (error instanceof AIServiceError) {
-        errorMessage = `AI Service Error (${error.provider}): ${error.message}`;
-      } else if (error instanceof Error) {
-        errorMessage = error.message;
-      }
-
-      const errorResponse: MessageWithAttachments = {
-        id: (Date.now() + 1).toString(),
-        content: `오류가 발생했습니다: ${errorMessage}`,
-        role: 'assistant',
-      };
-      setAgentMessages(prev => [...prev, errorResponse]);
-    } finally {
-      setIsAgentLoading(false);
+      await submit(userMessage);
+    } catch (err) {
+      logger.error('Error submitting message:', err);
     }
   };
 
-  // 메시지 업데이트 시 자동 스크롤
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [agentMessages]);
+  }, [messages]);
 
   return (
     <div className="flex-1 p-4 overflow-y-auto space-y-2 pb-32 terminal-scrollbar">
-      {agentMessages.map(m => (
+      {messages.map(m => (
         <MessageBubble key={m.id} message={m} currentRoleName={currentRole?.name} />
       ))}
 
-      {isAgentLoading && (
+      {isLoading && (
         <div className="flex justify-start">
           <div className="bg-gray-800/50 text-gray-200 rounded px-3 py-2">
-            <div className="text-xs text-gray-400 mb-1">Agent ({currentRole?.name}) - Max {maxAgentTurns} turns</div>
+            <div className="text-xs text-gray-400 mb-1">Agent ({currentRole?.name})</div>
             <div className="text-sm">thinking...</div>
           </div>
         </div>
       )}
 
-      {/* 스크롤 마커 */}
       <div ref={messagesEndRef} />
 
-      {/* Tools Detail Modal */}
-      {showToolsDetail && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-gray-900 border border-green-400 rounded-lg p-6 max-w-2xl w-full mx-4 max-h-[80vh] overflow-hidden">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-bold text-green-400">
-                Available MCP Tools ({availableTools.length})
-              </h2>
-              <button
-                onClick={() => setShowToolsDetail(false)}
-                className="text-gray-400 hover:text-red-400 transition-colors"
-              >
-                ✕
-              </button>
-            </div>
+      <ToolsModal
+        isOpen={showToolsDetail}
+        onClose={() => setShowToolsDetail(false)}
+      />
 
-            <div className="overflow-y-auto terminal-scrollbar max-h-[60vh]">
-              {availableTools.length === 0 ? (
-                <div className="text-gray-400 text-center py-8">
-                  No MCP tools available. Configure MCP servers in Role Manager.
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  {availableTools.map((tool, index) => (
-                    <div key={index} className="bg-gray-800 border border-gray-700 rounded p-3">
-                      <div className="flex items-center gap-2 mb-2">
-                        <span className="text-blue-400 font-mono text-sm">🔧 {tool.name}</span>
-                      </div>
-                      {tool.description && (
-                        <p className="text-gray-300 text-sm">{tool.description}</p>
-                      )}
-                      {tool.input_schema && (
-                        <details className="mt-2">
-                          <summary className="text-xs text-gray-400 cursor-pointer hover:text-gray-300">
-                            Input Schema
-                          </summary>
-                          <pre className="text-xs text-gray-500 mt-1 bg-gray-900 p-2 rounded overflow-x-auto">
-                            {JSON.stringify(tool.input_schema, null, 2)}
-                          </pre>
-                        </details>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            <div className="mt-4 pt-4 border-t border-gray-700">
-              <button
-                onClick={() => setShowToolsDetail(false)}
-                className="w-full bg-green-600 hover:bg-green-500 text-white py-2 rounded transition-colors"
-              >
-                Close
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Tools Status Bar - Add this above the input area */}
       <div className="absolute bottom-16 left-0 right-0 bg-gray-900/90 px-4 py-2 border-t border-gray-700 flex items-center justify-between">
         <div className="flex items-center gap-2">
           <span className="text-xs text-gray-400">Role:</span>
@@ -297,7 +138,6 @@ const AgentChat: React.FC<AgentChatProps> = ({
         </div>
       </div>
 
-      {/* Attached Files Display */}
       {attachedFiles.length > 0 && (
         <div className="bg-gray-950 px-4 py-2 border-t border-gray-700">
           <div className="text-xs text-gray-500 mb-2">📎 Attached Files:</div>
@@ -318,7 +158,6 @@ const AgentChat: React.FC<AgentChatProps> = ({
         </div>
       )}
 
-      {/* Input Area */}
       <form
         onSubmit={handleAgentSubmit}
         className="absolute bottom-0 left-0 right-0 bg-gray-950 px-4 py-4 border-t border-gray-700 flex items-center gap-2"
@@ -329,8 +168,8 @@ const AgentChat: React.FC<AgentChatProps> = ({
             variant="terminal"
             value={agentInput}
             onChange={handleAgentInputChange}
-            placeholder={isAgentLoading ? "agent busy..." : "query agent..."}
-            disabled={isAgentLoading}
+            placeholder={isLoading ? "agent busy..." : "query agent..."}
+            disabled={isLoading}
             className="flex-1 caret-green-400 min-w-0"
             autoComplete="off"
             spellCheck="false"
@@ -346,7 +185,7 @@ const AgentChat: React.FC<AgentChatProps> = ({
 
         <Button
           type="submit"
-          disabled={isAgentLoading}
+          disabled={isLoading}
           variant="ghost"
           size="sm"
           className="px-1"
@@ -354,6 +193,7 @@ const AgentChat: React.FC<AgentChatProps> = ({
           ⏎
         </Button>
       </form>
+      <ToolCaller />
     </div>
   );
 };

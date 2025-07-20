@@ -3,7 +3,7 @@
 import { Modal, Input, Button, Tabs, TabsList, TabsTrigger, TabsContent, CompactModelPicker } from './ui';
 import { AIServiceProvider } from '../lib/ai-service';
 import { useSettings } from '../hooks/use-settings';
-import { useState } from 'react';
+import { ChangeEvent, useCallback, useState } from 'react';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -11,18 +11,16 @@ interface SettingsModalProps {
 }
 
 export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
-  const {
-    apiKeys,
-    setApiKeys,
-    selectedProvider: provider,
-    setSelectedProvider: setProvider,
-    selectedModel: model,
-    setSelectedModel: setModel,
-    messageWindowSize,
-    setMessageWindowSize,
-  } = useSettings();
+  const { value: { apiKeys, windowSize }, update } = useSettings();
   const [activeTab, setActiveTab] = useState('api-key');
-  
+
+  const handleApiKeyUpdate = useCallback((e: ChangeEvent<HTMLInputElement>, serviceProvider: AIServiceProvider) => {
+    update({ apiKeys: { ...apiKeys, [serviceProvider]: e.target.value } });
+  }, [update]);
+
+  const handleWindowSizeUpdate = useCallback((size: number) => {
+    update({ windowSize: size });
+  }, [update]);
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} title="Settings">
@@ -31,7 +29,7 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
           <TabsList>
             <TabsTrigger onClick={() => setActiveTab('api-key')} isActive={activeTab === 'api-key'}>API Key Settings</TabsTrigger>
             <TabsTrigger onClick={() => setActiveTab('conversation-model')} isActive={activeTab === 'conversation-model'}>Conversation & Model Preferences</TabsTrigger>
-            
+
           </TabsList>
 
           <TabsContent value="api-key">
@@ -45,12 +43,7 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                     type="password"
                     placeholder={`Enter your ${serviceProvider} API key`}
                     value={apiKeys[serviceProvider] || ''}
-                    onChange={(e) =>
-                      setApiKeys({
-                        ...apiKeys,
-                        [serviceProvider]: e.target.value,
-                      })
-                    }
+                    onChange={e => handleApiKeyUpdate(e, serviceProvider)}
                   />
                 </div>
               ))}
@@ -64,24 +57,17 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                 <Input
                   type="number"
                   placeholder="e.g., 50"
-                  value={messageWindowSize}
-                  onChange={(e) => setMessageWindowSize(parseInt(e.target.value, 10))}
+                  value={windowSize}
+                  onChange={(e) => handleWindowSizeUpdate(parseInt(e.target.value, 10))}
                 />
               </div>
 
               <div>
                 <label className="block text-gray-400 mb-2 font-medium">LLM Preference</label>
-                <CompactModelPicker
-                  selectedProvider={provider}
-                  selectedModel={model}
-                  onProviderChange={setProvider}
-                  onModelChange={setModel}
-                />
+                <CompactModelPicker />
               </div>
             </div>
           </TabsContent>
-
-          
         </Tabs>
 
         <div className="flex justify-end pt-4">

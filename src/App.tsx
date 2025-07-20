@@ -14,7 +14,7 @@ function App() {
         <Button onClick={() => setIsSettingsModalOpen(true)}>Settings</Button>
       </header>
       <main className="flex-1 overflow-hidden">
-        <Chat />
+          <Chat />
       </main>
       <SettingsModal isOpen={isSettingsModalOpen} onClose={() => setIsSettingsModalOpen(false)} />
     </div>

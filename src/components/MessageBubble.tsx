@@ -20,8 +20,8 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({ message, currentRoleName 
   const isTool = message.role === 'tool';
   const isAssistant = message.role === 'assistant' || message.role === 'system';
 
-  const bubbleClasses = `px-3 py-2 rounded ${isUser ? 'bg-blue-900/50 text-blue-200' : 'bg-gray-800/50 text-gray-200'}`;
-  const headerClasses = `text-xs mb-1 ${isUser ? 'text-gray-400' : 'text-gray-400'}`;
+  const bubbleClasses = `px-4 py-3 rounded ${isUser ? 'bg-blue-900/50 text-blue-200' : 'bg-gray-800/50 text-gray-200'}`;
+  const headerClasses = `text-xs mb-1.5 ${isUser ? 'text-gray-400' : 'text-gray-400'}`;
   const contentClasses = `whitespace-pre-wrap text-sm`;
 
   let roleLabel = '';
@@ -40,19 +40,19 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({ message, currentRoleName 
         <div className={contentClasses}>{message.content}</div>
 
         {message.thinking && (
-          <div className="flex items-center gap-2 mt-2 text-sm text-gray-400 bg-gray-900/70 h-8 overflow-hidden px-2 rounded">
+          <div className="flex items-center gap-2 mt-3 text-sm text-gray-400 bg-gray-900/70 h-8 overflow-hidden px-3 py-2 rounded">
             <LoadingSpinner size="sm" /> {message.thinking}
           </div>
         )}
 
         {message.attachments && message.attachments.length > 0 && (
-          <div className="mt-2 text-xs text-gray-400">
+          <div className="mt-3 text-xs text-gray-400">
             📎 {message.attachments.length} file(s) attached
           </div>
         )}
 
         {isTool && (
-          <div className="mt-2 text-xs text-gray-500 bg-gray-900/50 p-2 rounded overflow-x-auto max-h-24">
+          <div className="mt-3 text-xs text-gray-500 bg-gray-900/50 p-3 rounded overflow-x-auto max-h-24">
             <pre>{message.content}</pre>
           </div>
         )}

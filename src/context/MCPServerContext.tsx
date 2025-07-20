@@ -1,30 +1,29 @@
-import { useState, useEffect, useCallback } from 'react';
-import { MCPTool, tauriMCPClient } from '../lib/tauri-mcp-client';
+import React, { createContext, ReactNode, useCallback, useEffect, useState } from 'react';
 import { Role } from '../lib/db';
 import { getLogger } from '../lib/logger';
+import { MCPTool, tauriMCPClient } from '../lib/tauri-mcp-client';
 
-const logger = getLogger('useMCPAgent');
+const logger = getLogger('MCPServerContext');
 
-interface MCPAgentHookResult {
+interface MCPServerContextType {
   availableTools: MCPTool[];
   isMCPConnecting: boolean;
   mcpServerStatus: Record<string, boolean>;
   showServerDropdown: boolean;
-  setShowServerDropdown: (show: boolean) => void;
-  showToolsDetail: boolean;
-  setShowToolsDetail: (show: boolean) => void;
   connectToMCP: (role: Role) => Promise<void>;
   executeToolCall: (toolCall: { id: string; type: 'function'; function: { name: string; arguments: string; } }) => Promise<{ role: 'tool'; content: string; tool_call_id: string }>;
   getMCPStatus: () => { color: string; status: string };
   getStatusText: () => string;
+  setShowServerDropdown: React.Dispatch<React.SetStateAction<boolean>>;
 }
 
-export const useMCPAgent = (): MCPAgentHookResult => {
+export const MCPServerContext = createContext<MCPServerContextType | undefined>(undefined);
+
+export const MCPServerProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [availableTools, setAvailableTools] = useState<MCPTool[]>([]);
   const [isMCPConnecting, setIsMCPConnecting] = useState(false);
   const [mcpServerStatus, setMcpServerStatus] = useState<Record<string, boolean>>({});
   const [showServerDropdown, setShowServerDropdown] = useState(false);
-  const [showToolsDetail, setShowToolsDetail] = useState(false);
 
   const connectToMCP = useCallback(async (role: Role) => {
     logger.debug(`Starting MCP connection for role: ${role.name}`);
@@ -66,7 +65,7 @@ export const useMCPAgent = (): MCPAgentHookResult => {
     }
   }, []);
 
-  const executeToolCall = async (toolCall: { id: string; type: 'function'; function: { name: string; arguments: string; } }): Promise<{ role: 'tool'; content: string; tool_call_id: string }> => {
+  const executeToolCall = useCallback(async (toolCall: { id: string; type: 'function'; function: { name: string; arguments: string; } }): Promise<{ role: 'tool'; content: string; tool_call_id: string }> => {
     logger.debug(`Executing tool call:`, {toolCall});
     const aiProvidedToolName = toolCall.function.name;
     let serverName: string | undefined;
@@ -99,9 +98,9 @@ export const useMCPAgent = (): MCPAgentHookResult => {
       logger.error(`Tool execution failed for ${toolCall.function.name}:`, {execError});
       return { role: 'tool', content: `Error: Tool '${toolCall.function.name}' failed: ${execError instanceof Error ? execError.message : String(execError)}`, tool_call_id: toolCall.id };
     }
-  };
+  }, []);
 
-  const getMCPStatus = () => {
+  const getMCPStatus = useCallback(() => {
     const servers = Object.entries(mcpServerStatus);
     if (servers.length === 0) return { color: 'bg-gray-400', status: 'none' };
 
@@ -115,9 +114,9 @@ export const useMCPAgent = (): MCPAgentHookResult => {
     } else {
       return { color: 'bg-red-400', status: 'none' };
     }
-  };
+  }, [mcpServerStatus]);
 
-  const getStatusText = () => {
+  const getStatusText = useCallback(() => {
     const { status } = getMCPStatus();
     const servers = Object.entries(mcpServerStatus);
     const connectedCount = servers.filter(([_, isConnected]) => isConnected).length;
@@ -129,7 +128,7 @@ export const useMCPAgent = (): MCPAgentHookResult => {
       case 'none': return totalCount > 0 ? `All ${totalCount} servers disconnected` : 'No servers configured';
       default: return 'Unknown status';
     }
-  };
+  }, [getMCPStatus, mcpServerStatus]);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -144,17 +143,22 @@ export const useMCPAgent = (): MCPAgentHookResult => {
     };
   }, [showServerDropdown]);
 
-  return {
+  const value = {
     availableTools,
     isMCPConnecting,
     mcpServerStatus,
     showServerDropdown,
-    setShowServerDropdown,
-    showToolsDetail,
-    setShowToolsDetail,
     connectToMCP,
     executeToolCall,
     getMCPStatus,
     getStatusText,
+    setShowServerDropdown,
   };
+
+  return (
+    <MCPServerContext.Provider value={value}>
+      {children}
+    </MCPServerContext.Provider>
+  );
 };
+

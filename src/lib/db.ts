@@ -85,15 +85,62 @@ class DBService {
 
   // --- PUBLIC API ---
 
-  public async saveRole(role: Role): Promise<void> {
+
+  /**
+   * Create a new role. Fails if the role already exists.
+   */
+  public async createRole(role: Role): Promise<void> {
     const store = await this.getObjectStore('roles', 'readwrite');
     const storableRole = this.toStorableRole(role);
     return new Promise((resolve, reject) => {
-      const request = store.put(storableRole);
-      request.onsuccess = () => resolve();
+      const getReq = store.get(role.id);
+      getReq.onsuccess = () => {
+        if (getReq.result) {
+          reject(new Error('Role already exists'));
+        } else {
+          const addReq = store.add(storableRole);
+          addReq.onsuccess = () => resolve();
+          addReq.onerror = () => reject(addReq.error);
+        }
+      };
+      getReq.onerror = () => reject(getReq.error);
+    });
+  }
+
+  /**
+   * Get a single role by id.
+   */
+  public async getRole(id: string): Promise<Role | null> {
+    const store = await this.getObjectStore('roles', 'readonly');
+    return new Promise((resolve, reject) => {
+      const request = store.get(id);
+      request.onsuccess = () => {
+        if (request.result) {
+          resolve(this.fromStorableRole(request.result));
+        } else {
+          resolve(null);
+        }
+      };
       request.onerror = () => reject(request.error);
     });
   }
+
+  /**
+   * Upsert a role (insert or update).
+   */
+  public async upsertRole(role: Role): Promise<void> {
+    const store = await this.getObjectStore('roles', 'readwrite');
+    const storableRole = this.toStorableRole(role);
+    return new Promise((resolve, reject) => {
+      const putReq = store.put(storableRole);
+      putReq.onsuccess = () => resolve();
+      putReq.onerror = () => reject(putReq.error);
+    });
+  }
+
+  /**
+   * Delete a role by id.
+   */
 
   public async getRoles(): Promise<Role[]> {
     const store = await this.getObjectStore('roles', 'readonly');
