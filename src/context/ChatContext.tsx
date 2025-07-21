@@ -49,7 +49,6 @@ export const ChatContextProvider: React.FC<ChatProviderProps> = ({ children }) =
                     const parsed = JSON.parse(response.content);
                     if (parsed.tool_calls) {
                         updatedResponse.tool_calls = parsed.tool_calls;
-                        updatedResponse.content = ""; // Clear content if it's just tool calls
                     }
                 } catch (e) {
                     // Not a JSON string, keep content as is

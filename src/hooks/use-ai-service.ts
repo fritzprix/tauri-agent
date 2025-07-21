@@ -8,6 +8,7 @@ import {
 import { getLogger } from "../lib/logger";
 import { useSettings } from "./use-settings";
 import { Role } from "../lib/db";
+import { useMCPServer } from "./use-mcp-server";
 
 const logger = getLogger("useAIService");
 
@@ -30,6 +31,8 @@ export const useAIService = (config?: AIServiceConfig, role?: Role) => {
       }),
     [provider, apiKeys, model]);
 
+    const {availableTools} = useMCPServer();
+
   const submit = useCallback(
     async (messages: StreamableMessage[]): Promise<StreamableMessage> => {
       setIsLoading(true);
@@ -44,6 +47,7 @@ export const useAIService = (config?: AIServiceConfig, role?: Role) => {
         const stream = serviceInstance.streamChat(messages, {
           modelName: model,
           systemPrompt: role?.systemPrompt || DEFAULT_SYSTEM_PROMPT,
+          availableTools,
           config: config,
         });
 
@@ -81,7 +85,7 @@ export const useAIService = (config?: AIServiceConfig, role?: Role) => {
         setIsLoading(false);
       }
     },
-    [role, model, provider, apiKeys, config, serviceInstance]
+    [role, model, provider, apiKeys, config, serviceInstance, availableTools]
   );
 
   return { response, isLoading, error, submit };

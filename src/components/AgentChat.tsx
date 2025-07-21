@@ -12,6 +12,7 @@ import {
   FileAttachment,
   Input
 } from './ui';
+import { createId } from '@paralleldrive/cuid2';
 
 const logger = getLogger('AgentChat');
 
@@ -79,7 +80,7 @@ const AgentChat: React.FC = () => {
     }
 
     const userMessage: StreamableMessage = {
-      id: Date.now().toString(),
+      id: createId(),
       content: messageContent,
       role: 'user',
     };

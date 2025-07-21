@@ -317,6 +317,7 @@ export class GroqService extends BaseAIService {
     } = {}
   ): AsyncGenerator<string, void, unknown> {
     this.validateMessages(messages);
+    logger.info("tools : ", {availableTools: options.availableTools});
     
     const config = { ...this.defaultConfig, ...options.config };
     
@@ -336,7 +337,10 @@ export class GroqService extends BaseAIService {
       );
 
       for await (const chunk of chatCompletion) {
-        if (chunk.choices[0]?.delta?.tool_calls) {
+        if (chunk.choices[0]?.delta?.reasoning) {
+          yield JSON.stringify({ reasoning: chunk.choices[0].delta.reasoning });
+        }
+        else if (chunk.choices[0]?.delta?.tool_calls) {
           yield JSON.stringify({ tool_calls: chunk.choices[0].delta.tool_calls });
         } else {
           yield chunk.choices[0]?.delta?.content || "";
@@ -481,6 +485,10 @@ export class AnthropicService extends BaseAIService {
           max_tokens: config.maxTokens!,
           messages: anthropicMessages,
           stream: true,
+          thinking: {
+            budget_tokens: 1024,
+            type:'enabled'
+          },
           system: options.systemPrompt,
           tools: options.availableTools ? convertMCPToolsToProviderTools(options.availableTools, AIServiceProvider.Anthropic) as AnthropicTool[] : undefined,
         })
