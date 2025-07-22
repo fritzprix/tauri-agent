@@ -69,7 +69,8 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
   const update = useCallback(async (settings: Partial<Settings>) => {
     try {
       if (settings.apiKeys) {
-        await dbService.saveSetting('apiKeys', settings.apiKeys);
+        const newApiKeys = { ...(value?.apiKeys || {}), ...settings.apiKeys };
+        await dbService.saveSetting('apiKeys', newApiKeys);
       }
       if (settings.preferredModel) {
         await dbService.saveSetting('preferredModel', settings.preferredModel);
@@ -82,7 +83,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
       logger.error('Failed to update settings', e);
       throw e;
     }
-  }, [load]);
+  }, [load, value]);
 
   const contextValue: SettingsContextType = useMemo(() => {
     return {

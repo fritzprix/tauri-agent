@@ -380,7 +380,7 @@ export class OpenAIService extends BaseAIService {
 
   constructor(apiKey: string, config?: AIServiceConfig) {
     super(apiKey, config);
-    this.openai = new OpenAI({ apiKey: this.apiKey });
+    this.openai = new OpenAI({ apiKey: this.apiKey, dangerouslyAllowBrowser: true });
   }
 
   getProvider(): AIServiceProvider {
