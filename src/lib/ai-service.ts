@@ -68,7 +68,7 @@ class MessageValidator {
     if (!message.id || typeof message.id !== 'string') {
       throw new Error('Message must have a valid id');
     }
-    if (!message.content || typeof message.content !== 'string') {
+    if ((!message.content && (message.role === 'user' || message.role === 'system')) || typeof message.content !== 'string') {
       logger.error(`Invalid message content: `, { message});
       throw new Error('Message must have valid content');
     }
@@ -167,6 +167,7 @@ export function convertMCPToolsToProviderTools(mcpTools: MCPTool[], provider: AI
   }
   return mcpTools.map(tool => convertMCPToolToProviderFormat(tool, provider));
 }
+
 
 // --- Enhanced Service Interface ---
 
@@ -338,12 +339,11 @@ export class GroqService extends BaseAIService {
 
       for await (const chunk of chatCompletion) {
         if (chunk.choices[0]?.delta?.reasoning) {
-          yield JSON.stringify({ reasoning: chunk.choices[0].delta.reasoning });
-        }
-        else if (chunk.choices[0]?.delta?.tool_calls) {
+          yield JSON.stringify({ thinking: chunk.choices[0].delta.reasoning });
+        } else if (chunk.choices[0]?.delta?.tool_calls) {
           yield JSON.stringify({ tool_calls: chunk.choices[0].delta.tool_calls });
-        } else {
-          yield chunk.choices[0]?.delta?.content || "";
+        } else if(chunk.choices[0]?.delta?.content) {
+          yield JSON.stringify({ content: chunk.choices[0]?.delta?.content || ""});
         }
       }
     } catch (error) {
@@ -418,8 +418,8 @@ export class OpenAIService extends BaseAIService {
       for await (const chunk of completion) {
         if (chunk.choices[0]?.delta?.tool_calls) {
           yield JSON.stringify({ tool_calls: chunk.choices[0].delta.tool_calls });
-        } else {
-          yield chunk.choices[0]?.delta?.content || "";
+        } else if (chunk.choices[0]?.delta?.content) {
+          yield JSON.stringify({ content: chunk.choices[0]?.delta?.content || "" });
         }
       }
     } catch (error) {
@@ -496,9 +496,12 @@ export class AnthropicService extends BaseAIService {
 
       for await (const chunk of completion) {
         if (chunk.type === "content_block_delta" && chunk.delta.type === 'text_delta') {
-          yield chunk.delta.text;
+          yield JSON.stringify({ content: chunk.delta.text });
+        } else if(chunk.type === "content_block_delta" && chunk.delta.type === "thinking_delta") {
+          yield JSON.stringify({ thinking: chunk.delta.thinking });
+        } else if(chunk.type === "content_block_delta" && chunk.delta.type === "input_json_delta") {
+          yield JSON.stringify({ tool_calls: chunk.delta.partial_json });
         }
-        // Enhanced tool use handling could be added here
       }
     } catch (error) {
       throw new AIServiceError(
@@ -600,7 +603,9 @@ export class GeminiService extends BaseAIService {
 
       for await (const chunk of result.stream) {
         const chunkText = chunk.text();
-        yield chunkText || "";
+        if (chunkText) {
+          yield JSON.stringify({ content: chunkText });
+        }
       }
     } catch (error) {
       throw new AIServiceError(

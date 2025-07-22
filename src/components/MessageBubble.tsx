@@ -8,6 +8,7 @@ interface MessageWithAttachments {
   thinking?: string;
   isStreaming?: boolean;
   attachments?: { name: string; content: string; }[];
+  tool_calls?: { id: string; type: 'function'; function: { name: string; arguments: string; } }[];
 }
 
 interface MessageBubbleProps {
@@ -76,7 +77,7 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({ message, currentRoleName 
           const parts = line.split('**');
           return (
             <div key={index}>
-              {parts.map((part, i) => 
+              {parts.map((part, i) =>
                 i % 2 === 1 ? <strong key={i}>{part}</strong> : part
               )}
             </div>
@@ -99,19 +100,45 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({ message, currentRoleName 
             <span className="text-xs opacity-60">{new Date().toLocaleTimeString()}</span>
           </div>
         </div>
-
-        {/* Main content */}
-        <div className="text-sm leading-relaxed">
-          {formatContent(message.content)}
-        </div>
-
         {/* Thinking indicator */}
         {message.thinking && (
           <div className="flex items-center gap-3 mt-4 p-3 bg-black/20 rounded-lg border border-white/10">
-            <LoadingSpinner size="sm" />
-            <span className="text-sm opacity-80 italic">{message.thinking}</span>
+            {message.content ? <></> : <LoadingSpinner size="sm" />}
+            <span className="text-sm opacity-50 italic">{message.thinking}</span>
           </div>
         )}
+
+        {/* Main content */}
+        {message.content && !message.tool_calls?.length && (
+          <div className="text-sm leading-relaxed">
+            {formatContent(message.content)}
+          </div>
+        )}
+
+        {/* Tool Calls */}
+        {message.tool_calls && message.tool_calls.length > 0 && (
+          <div className="mt-4 p-3 bg-black/20 rounded-lg border border-white/10">
+            <div className="flex items-center gap-2 mb-2">
+              <span className="text-sm">🛠️</span>
+              <span className="text-sm font-medium">
+                Tool Call
+              </span>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {message.tool_calls.map((tool_call, index) => (
+                <div
+                  key={index}
+                  className="inline-flex items-center gap-2 px-3 py-1 bg-white/10 rounded-full text-xs"
+                >
+                  <span className="text-blue-400">{tool_call.function.name}</span>
+                  <span className="truncate max-w-32">{tool_call.function.arguments}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+
 
         {/* Attachments */}
         {message.attachments && message.attachments.length > 0 && (

@@ -3,6 +3,9 @@ import { useAIService } from "../hooks/use-ai-service";
 import { useMCPServer } from "../hooks/use-mcp-server";
 import { StreamableMessage } from "../lib/ai-service";
 import { useRoleContext } from "./RoleContext";
+import { getLogger } from "../lib/logger";
+
+const logger = getLogger("ChatContext");
 
 
 export interface ChatContextType {
@@ -46,12 +49,14 @@ export const ChatContextProvider: React.FC<ChatProviderProps> = ({ children }) =
                 let updatedResponse = { ...response };
 
                 try {
+                    logger.info("parsed ", {response});
                     const parsed = JSON.parse(response.content);
                     if (parsed.tool_calls) {
                         updatedResponse.tool_calls = parsed.tool_calls;
-                    }
+                    } 
                 } catch (e) {
                     // Not a JSON string, keep content as is
+                    logger.info("error ", {e});
                 }
 
                 if (lastMessage?.role === "assistant" && lastMessage.isStreaming) {

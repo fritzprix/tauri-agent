@@ -41,6 +41,8 @@ export const useAIService = (config?: AIServiceConfig, role?: Role) => {
 
       let currentResponseId = createId();
       let fullContent = "";
+      let thinking = "";
+      let toolCalls: any[] = [];
       let finalMessage: StreamableMessage | null = null;
 
       try {
@@ -52,13 +54,43 @@ export const useAIService = (config?: AIServiceConfig, role?: Role) => {
         });
 
         for await (const chunk of stream) {
-          fullContent += chunk;
+          const parsedChunk = JSON.parse(chunk);
+          
+          if (parsedChunk.thinking) {
+            thinking += parsedChunk.thinking;
+          }
+          if (parsedChunk.tool_calls) {
+            parsedChunk.tool_calls.forEach((toolCallChunk: any) => {
+              const { index } = toolCallChunk;
+              if (index === undefined) {
+                toolCalls.push(toolCallChunk);
+                return;
+              }
+
+              if (toolCalls[index]) {
+                if (toolCallChunk.function?.arguments) {
+                  toolCalls[index].function.arguments += toolCallChunk.function.arguments;
+                }
+                if (toolCallChunk.id) {
+                  toolCalls[index].id = toolCallChunk.id;
+                }
+              } else {
+                toolCalls[index] = toolCallChunk;
+              }
+            });
+            toolCalls = toolCalls.filter(Boolean);
+          }
+          if (parsedChunk.content) {
+            fullContent += parsedChunk.content;
+          }
 
           finalMessage = {
             id: currentResponseId,
             content: fullContent,
             role: "assistant",
             isStreaming: true,
+            thinking,
+            tool_calls: toolCalls,
           };
           setResponse(finalMessage);
         }
@@ -66,8 +98,10 @@ export const useAIService = (config?: AIServiceConfig, role?: Role) => {
         finalMessage = {
           id: currentResponseId,
           content: fullContent,
+          thinking,
           role: "assistant",
           isStreaming: false,
+          tool_calls: toolCalls,
         };
         setResponse(finalMessage);
         return finalMessage;

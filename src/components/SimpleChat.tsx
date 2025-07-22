@@ -9,7 +9,7 @@ import {
 import { useMCPServer } from '../hooks/use-mcp-server';
 import ToolsModal from './ToolsModal';
 import { useChatContext } from '../hooks/use-chat';
-import { ToolCaller } from './ToolCaller';
+import { ToolCaller } from './orchestrators/ToolCaller';
 import { createId } from '@paralleldrive/cuid2';
 
 const logger = getLogger('SimpleChat');

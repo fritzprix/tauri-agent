@@ -5,7 +5,7 @@ import { useMCPServer } from '../hooks/use-mcp-server';
 import { StreamableMessage } from '../lib/ai-service';
 import { getLogger } from '../lib/logger';
 import MessageBubble from './MessageBubble';
-import { ToolCaller } from './ToolCaller';
+import { ToolCaller } from './orchestrators/ToolCaller';
 import ToolsModal from './ToolsModal';
 import {
   Button,
