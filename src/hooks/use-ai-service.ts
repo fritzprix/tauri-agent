@@ -92,6 +92,7 @@ export const useAIService = (config?: AIServiceConfig, role?: Role) => {
             thinking,
             tool_calls: toolCalls,
           };
+          logger.info("message : ", {finalMessage});
           setResponse(finalMessage);
         }
 

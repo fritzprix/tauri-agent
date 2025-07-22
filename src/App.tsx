@@ -1,9 +1,9 @@
 import { useState } from "react";
 import Chat from "./components/Chat";
-import "./globals.css";
 import SettingsModal from "./components/SettingsModal";
 import Button from "./components/ui/Button";
-import { ChatContext, ChatContextProvider } from "./context/ChatContext";
+import { ChatContextProvider } from "./context/ChatContext";
+import "./globals.css";
 
 function App() {
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);

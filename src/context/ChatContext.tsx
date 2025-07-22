@@ -48,17 +48,6 @@ export const ChatContextProvider: React.FC<ChatProviderProps> = ({ children }) =
                 const lastMessage = prev[prev.length - 1];
                 let updatedResponse = { ...response };
 
-                try {
-                    logger.info("parsed ", {response});
-                    const parsed = JSON.parse(response.content);
-                    if (parsed.tool_calls) {
-                        updatedResponse.tool_calls = parsed.tool_calls;
-                    } 
-                } catch (e) {
-                    // Not a JSON string, keep content as is
-                    logger.info("error ", {e});
-                }
-
                 if (lastMessage?.role === "assistant" && lastMessage.isStreaming) {
                     return [
                         ...prev.slice(0, -1),
