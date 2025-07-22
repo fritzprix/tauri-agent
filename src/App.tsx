@@ -3,6 +3,7 @@ import Chat from "./components/Chat";
 import "./globals.css";
 import SettingsModal from "./components/SettingsModal";
 import Button from "./components/ui/Button";
+import { ChatContext, ChatContextProvider } from "./context/ChatContext";
 
 function App() {
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
@@ -14,7 +15,9 @@ function App() {
         <Button onClick={() => setIsSettingsModalOpen(true)}>Settings</Button>
       </header>
       <main className="flex-1 overflow-hidden">
-        <Chat />
+        <ChatContextProvider>
+          <Chat />
+          </ChatContextProvider>
       </main>
       <SettingsModal isOpen={isSettingsModalOpen} onClose={() => setIsSettingsModalOpen(false)} />
     </div>

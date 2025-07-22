@@ -1,41 +1,33 @@
-import { createId } from "@paralleldrive/cuid2";
-import React, { useEffect, useRef, useState } from "react";
-import { ChatContextProvider } from "../context/ChatContext";
-import { useRoleContext } from "../context/RoleContext";
-import { useChatContext } from "../hooks/use-chat";
-import { useMCPServer } from "../hooks/use-mcp-server";
-import { StreamableMessage } from "../lib/ai-service";
-import { getLogger } from "../lib/logger";
-import RoleManager from "./RoleManager";
-import { Button, CompactModelPicker, FileAttachment, Input } from "./ui";
-import ToolsModal from "./ToolsModal";
-import MessageBubble from "./MessageBubble";
-import { ToolCaller } from "./orchestrators/ToolCaller";
+import React, { useEffect, useRef, useState } from 'react';
+import { useRoleContext } from '../context/RoleContext';
+import { useChatContext } from '../hooks/use-chat';
+import { useMCPServer } from '../hooks/use-mcp-server';
+import { StreamableMessage } from '../lib/ai-service';
+import { getLogger } from '../lib/logger';
+import MessageBubble from './MessageBubble';
+import { ToolCaller } from './orchestrators/ToolCaller';
+import ToolsModal from './ToolsModal';
+import {
+  Button,
+  FileAttachment,
+  Input
+} from './ui';
+import { createId } from '@paralleldrive/cuid2';
 
-const logger = getLogger("Chat");
+const logger = getLogger('AgentChat');
 
-interface ChatProps {
-  children?: React.ReactNode;
-}
-
-export default function Chat({ children }: ChatProps) {
-  const [mode, setMode] = useState<'chat' | 'agent'>('agent');
-  const [showRoleManager, setShowRoleManager] = useState(false);
-  const { currentRole } = useRoleContext();
-  const [showToolsDetail, setShowToolsDetail] = useState(false);
+const AgentChat: React.FC = () => {
+  const { messages, submit, isLoading } = useChatContext();
+  const [agentInput, setAgentInput] = useState('');
   const [attachedFiles, setAttachedFiles] = useState<{ name: string; content: string; }[]>([]);
   const { availableTools } = useMCPServer();
-  const [input, setInput] = useState("");
-  const { submit, isLoading, messages } = useChatContext();
+  const [showToolsDetail, setShowToolsDetail] = useState(false);
+  const { currentRole } = useRoleContext();
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
-
   const handleAgentInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setInput(e.target.value);
+    setAgentInput(e.target.value);
   };
 
   const handleFileAttachment = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -73,13 +65,13 @@ export default function Chat({ children }: ChatProps) {
     setAttachedFiles(prev => prev.filter((_, i) => i !== index));
   };
 
-  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+  const handleAgentSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     logger.info("submit!!", currentRole);
     e.preventDefault();
-    if (!input.trim() && attachedFiles.length === 0) return;
+    if (!agentInput.trim() && attachedFiles.length === 0) return;
     if (!currentRole) return;
 
-    let messageContent = input.trim();
+    let messageContent = agentInput;
     if (attachedFiles.length > 0) {
       messageContent += '\n\n--- Attached Files ---\n';
       attachedFiles.forEach(file => {
@@ -93,7 +85,7 @@ export default function Chat({ children }: ChatProps) {
       role: 'user',
     };
 
-    setInput('');
+    setAgentInput('');
     setAttachedFiles([]);
 
     try {
@@ -103,76 +95,29 @@ export default function Chat({ children }: ChatProps) {
     }
   };
 
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages]);
+
   return (
-    <div className="h-full w-screen bg-black text-green-400 font-mono flex flex-col rounded-lg overflow-hidden shadow-2xl shadow-green-400/30">
-      {/* Terminal Header */}
-      <div className="bg-gray-900 px-4 py-3 flex items-center justify-between border-b border-gray-700 flex-shrink-0">
-        <div className="flex items-center gap-4">
-          <div className="flex gap-2">
-            <div className="w-3 h-3 rounded-full bg-red-500"></div>
-            <div className="w-3 h-3 rounded-full bg-yellow-500"></div>
-            <div className="w-3 h-3 rounded-full bg-green-500"></div>
-          </div>
-          <div className="text-sm text-gray-500">mcp-agent@terminal ~ %</div>
-        </div>
-        {currentRole && (
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-gray-400">Role:</span>
-            <span className="text-sm text-green-400">{currentRole.name}</span>
+    <div className="flex flex-col h-full">
+      {/* Main content area */}
+      <div className="flex-1 p-4 overflow-y-auto flex flex-col gap-6 terminal-scrollbar">
+        {messages.map(m => (
+          <MessageBubble key={m.id} message={m} currentRoleName={currentRole?.name} />
+        ))}
+        {isLoading && (
+          <div className="flex justify-start">
+            <div className="bg-gray-800/50 text-gray-200 rounded px-3 py-2">
+              <div className="text-xs text-gray-400 mb-1">Agent ({currentRole?.name})</div>
+              <div className="text-sm">thinking...</div>
+            </div>
           </div>
         )}
+        <div ref={messagesEndRef} />
       </div>
 
-      {/* Mode Switcher */}
-      <div className="bg-gray-950 px-4 py-2 border-b border-gray-700 flex-shrink-0">
-        <div className="flex justify-between items-center">
-          <div className="flex gap-2">
-            <button
-              className={`text-xs px-2 py-1 rounded ${mode === 'chat' ? 'bg-green-700 text-white' : 'bg-gray-800 text-green-400'}`}
-              onClick={() => setMode('chat')}
-            >
-              [chat]
-            </button>
-            <button
-              className={`text-xs px-2 py-1 rounded ${mode === 'agent' ? 'bg-green-700 text-white' : 'bg-gray-800 text-green-400'}`}
-              onClick={() => setMode('agent')}
-            >
-              [agent]
-            </button>
-          </div>
-          <button
-            className="text-xs px-2 py-1 rounded bg-gray-800 text-green-400 hover:bg-green-700 hover:text-white"
-            onClick={() => setShowRoleManager(true)}
-          >
-            [manage-roles]
-          </button>
-        </div>
-      </div>
-
-      {/* Model Picker */}
-      <div className="bg-gray-950 px-4 py-3 border-b border-gray-700 flex-shrink-0">
-        <CompactModelPicker className="" />
-      </div>
-
-      {/* Messages Area - Fills space between model picker and bottom UI */}
-      <div className="flex-1 flex flex-col min-h-0">
-        <div className="flex-1 p-4 overflow-y-auto flex flex-col gap-6 terminal-scrollbar">
-          {messages.map(m => (
-            <MessageBubble key={m.id} message={m} currentRoleName={currentRole?.name} />
-          ))}
-          {isLoading && (
-            <div className="flex justify-start">
-              <div className="bg-gray-800/50 text-gray-200 rounded px-3 py-2">
-                <div className="text-xs text-gray-400 mb-1">Agent ({currentRole?.name})</div>
-                <div className="text-sm">thinking...</div>
-              </div>
-            </div>
-          )}
-          <div ref={messagesEndRef} />
-        </div>
-      </div>
-
-      {/* Bottom UI Stack - Fixed at bottom */}
+      {/* Fixed bottom UI stack */}
       <div className="flex-shrink-0">
         {/* Status bar */}
         <div className="bg-gray-900/90 px-4 py-2 border-t border-gray-700 flex items-center justify-between">
@@ -215,14 +160,14 @@ export default function Chat({ children }: ChatProps) {
 
         {/* Input form */}
         <form
-          onSubmit={handleSubmit}
+          onSubmit={handleAgentSubmit}
           className="bg-gray-950 px-4 py-4 border-t border-gray-700 flex items-center gap-2"
         >
           <span className="text-green-400 font-bold flex-shrink-0">$</span>
           <div className="flex-1 flex items-center gap-2 min-w-0">
             <Input
               variant="terminal"
-              value={input}
+              value={agentInput}
               onChange={handleAgentInputChange}
               placeholder={isLoading ? "agent busy..." : "query agent..."}
               disabled={isLoading}
@@ -251,16 +196,14 @@ export default function Chat({ children }: ChatProps) {
         </form>
       </div>
 
-      {/* Modals */}
-      {showRoleManager && (
-        <RoleManager onClose={() => setShowRoleManager(false)} />
-      )}
+      {/* Modals and other components */}
       <ToolsModal
         isOpen={showToolsDetail}
         onClose={() => setShowToolsDetail(false)}
       />
       <ToolCaller />
-      {children}
     </div>
   );
-}
+};
+
+export default AgentChat;

@@ -1,3 +1,10 @@
+import { getLogger } from './logger';
+
+const logger = getLogger('DBService');
+
+// --- TYPE DEFINITIONS ---
+// These types are used within the application logic.
+// The DB service will handle conversion to storable formats.
 export interface Role {
   id: string;
   name: string;
@@ -14,56 +21,35 @@ export interface Role {
   updatedAt: Date;
 }
 
-export interface Conversation {
-  id: string;
-  roleId: string;
-  title: string;
-  messages: Array<{
-    id: string;
-    content: string;
-    role: string;
-    attachments?: { name: string; content: string; }[];
-  }>;
-  createdAt: Date;
-  updatedAt: Date;
-}
+// --- STORABLE TYPES ---
+// This type represents how Role data is stored in IndexedDB (e.g., dates as strings).
+type StorableRole = Omit<Role, 'createdAt' | 'updatedAt'> & { createdAt: string; updatedAt: string };
 
-export interface LLMSettings {
-  provider: string;
-  model: string;
-}
+class DBService {
+  private static instance: DBService;
+  private dbPromise: Promise<IDBDatabase>;
 
-class MCPDatabase {
-  private db: IDBDatabase | null = null;
-  
-  async init(): Promise<void> {
-    return new Promise<void>((resolve, reject) => {
-      const request = indexedDB.open('MCPAgent', 2);
-      
-      request.onerror = () => reject(request.error);
-      request.onsuccess = () => {
-        this.db = request.result;
-        resolve();
+  private constructor() {
+    this.dbPromise = new Promise((resolve, reject) => {
+      const request = indexedDB.open('MCPAgentDB', 3); // Version incremented for schema safety
+
+      request.onerror = () => {
+        logger.error('IndexedDB error:', { error: request.error });
+        reject(request.error);
       };
-      
-      request.onupgradeneeded = (event) => {
-        const db = (event.target as IDBOpenDBRequest).result;
-        
-        // Roles store
-        if (!db.objectStoreNames.contains('roles')) {
-          const roleStore = db.createObjectStore('roles', { keyPath: 'id' });
-          roleStore.createIndex('name', 'name', { unique: true });
-          roleStore.createIndex('isDefault', 'isDefault');
-        }
-        
-        // Conversations store
-        if (!db.objectStoreNames.contains('conversations')) {
-          const convStore = db.createObjectStore('conversations', { keyPath: 'id' });
-          convStore.createIndex('roleId', 'roleId');
-          convStore.createIndex('createdAt', 'createdAt');
-        }
 
-        // Settings store
+      request.onsuccess = () => {
+        logger.debug('Database initialized successfully.');
+        resolve(request.result);
+      };
+
+      request.onupgradeneeded = (event) => {
+        logger.info('Database upgrade needed.');
+        const db = (event.target as IDBOpenDBRequest).result;
+        if (!db.objectStoreNames.contains('roles')) {
+          db.createObjectStore('roles', { keyPath: 'id' });
+        }
+        // Removed unused 'conversations' object store
         if (!db.objectStoreNames.contains('settings')) {
           db.createObjectStore('settings', { keyPath: 'key' });
         }
@@ -71,126 +57,66 @@ class MCPDatabase {
     });
   }
 
-  async createDefaultRole(): Promise<Role> {
-    const defaultRole: Role = {
-      id: 'default',
-      name: 'Default Assistant',
-      systemPrompt: 'You are a helpful AI assistant. You can help with various tasks including coding, analysis, and general questions.',
-      mcpConfig: {
-        mcpServers: {}
-      },
-      isDefault: true,
-      createdAt: new Date(),
-      updatedAt: new Date()
-    };
-    
-    await this.saveRole(defaultRole);
-    return defaultRole;
+  public static getInstance(): DBService {
+    if (!DBService.instance) {
+      DBService.instance = new DBService();
+    }
+    return DBService.instance;
   }
 
-  async saveRole(role: Role): Promise<void> {
-    if (!this.db) throw new Error('Database not initialized');
-    
+  // --- PRIVATE HELPERS ---
+
+  private getObjectStore = async (storeName: string, mode: IDBTransactionMode): Promise<IDBObjectStore> => {
+    const db = await this.dbPromise;
+    return db.transaction(storeName, mode).objectStore(storeName);
+  };
+
+  private toStorableRole = (role: Role): StorableRole => ({
+    ...role,
+    createdAt: role.createdAt.toISOString(),
+    updatedAt: role.updatedAt.toISOString(),
+  });
+
+  private fromStorableRole = (role: StorableRole): Role => ({
+    ...role,
+    createdAt: new Date(role.createdAt),
+    updatedAt: new Date(role.updatedAt),
+  });
+
+  // --- PUBLIC API ---
+
+
+  /**
+   * Create a new role. Fails if the role already exists.
+   */
+  public async createRole(role: Role): Promise<void> {
+    const store = await this.getObjectStore('roles', 'readwrite');
+    const storableRole = this.toStorableRole(role);
     return new Promise((resolve, reject) => {
-      const transaction = this.db!.transaction(['roles'], 'readwrite');
-      const store = transaction.objectStore('roles');
-      const request = store.put(role);
-      
-      request.onsuccess = () => resolve();
-      request.onerror = () => reject(request.error);
+      const getReq = store.get(role.id);
+      getReq.onsuccess = () => {
+        if (getReq.result) {
+          reject(new Error('Role already exists'));
+        } else {
+          const addReq = store.add(storableRole);
+          addReq.onsuccess = () => resolve();
+          addReq.onerror = () => reject(addReq.error);
+        }
+      };
+      getReq.onerror = () => reject(getReq.error);
     });
   }
 
-  async getRoles(): Promise<Role[]> {
-    if (!this.db) throw new Error('Database not initialized');
-    
+  /**
+   * Get a single role by id.
+   */
+  public async getRole(id: string): Promise<Role | null> {
+    const store = await this.getObjectStore('roles', 'readonly');
     return new Promise((resolve, reject) => {
-      const transaction = this.db!.transaction(['roles'], 'readonly');
-      const store = transaction.objectStore('roles');
-      const request = store.getAll();
-      
-      request.onsuccess = () => resolve(request.result);
-      request.onerror = () => reject(request.error);
-    });
-  }
-
-  async getRole(id: string): Promise<Role | null> {
-    if (!this.db) throw new Error('Database not initialized');
-    
-    return new Promise((resolve, reject) => {
-      const transaction = this.db!.transaction(['roles'], 'readonly');
-      const store = transaction.objectStore('roles');
       const request = store.get(id);
-      
-      request.onsuccess = () => resolve(request.result || null);
-      request.onerror = () => reject(request.error);
-    });
-  }
-
-  async deleteRole(id: string): Promise<void> {
-    if (!this.db) throw new Error('Database not initialized');
-    
-    return new Promise((resolve, reject) => {
-      const transaction = this.db!.transaction(['roles'], 'readwrite');
-      const store = transaction.objectStore('roles');
-      const request = store.delete(id);
-      
-      request.onsuccess = () => resolve();
-      request.onerror = () => reject(request.error);
-    });
-  }
-
-  async saveConversation(conversation: Conversation): Promise<void> {
-    if (!this.db) throw new Error('Database not initialized');
-    
-    return new Promise((resolve, reject) => {
-      const transaction = this.db!.transaction(['conversations'], 'readwrite');
-      const store = transaction.objectStore('conversations');
-      const request = store.put(conversation);
-      
-      request.onsuccess = () => resolve();
-      request.onerror = () => reject(request.error);
-    });
-  }
-
-  async getConversationsByRole(roleId: string): Promise<Conversation[]> {
-    if (!this.db) throw new Error('Database not initialized');
-    
-    return new Promise((resolve, reject) => {
-      const transaction = this.db!.transaction(['conversations'], 'readonly');
-      const store = transaction.objectStore('conversations');
-      const index = store.index('roleId');
-      const request = index.getAll(roleId);
-      
-      request.onsuccess = () => resolve(request.result);
-      request.onerror = () => reject(request.error);
-    });
-  }
-
-  async saveSetting(key: string, value: any): Promise<void> {
-    if (!this.db) throw new Error('Database not initialized');
-    
-    return new Promise((resolve, reject) => {
-      const transaction = this.db!.transaction(['settings'], 'readwrite');
-      const store = transaction.objectStore('settings');
-      const request = store.put({ key, value });
-      
-      request.onsuccess = () => resolve();
-      request.onerror = () => reject(request.error);
-    });
-  }
-
-  async getSetting<T>(key: string): Promise<T | null> {
-    if (!this.db) throw new Error('Database not initialized');
-    
-    return new Promise((resolve, reject) => {
-      const transaction = this.db!.transaction(['settings'], 'readonly');
-      const store = transaction.objectStore('settings');
-      const request = store.get(key);
-      
       request.onsuccess = () => {
         if (request.result) {
-          resolve(request.result.value as T);
+          resolve(this.fromStorableRole(request.result));
         } else {
           resolve(null);
         }
@@ -198,6 +124,59 @@ class MCPDatabase {
       request.onerror = () => reject(request.error);
     });
   }
+
+  /**
+   * Upsert a role (insert or update).
+   */
+  public async upsertRole(role: Role): Promise<void> {
+    const store = await this.getObjectStore('roles', 'readwrite');
+    const storableRole = this.toStorableRole(role);
+    return new Promise((resolve, reject) => {
+      const putReq = store.put(storableRole);
+      putReq.onsuccess = () => resolve();
+      putReq.onerror = () => reject(putReq.error);
+    });
+  }
+
+  /**
+   * Delete a role by id.
+   */
+
+  public async getRoles(): Promise<Role[]> {
+    const store = await this.getObjectStore('roles', 'readonly');
+    return new Promise((resolve, reject) => {
+      const request = store.getAll();
+      request.onsuccess = () => resolve(request.result.map(this.fromStorableRole));
+      request.onerror = () => reject(request.error);
+    });
+  }
+
+  public async deleteRole(id: string): Promise<void> {
+    const store = await this.getObjectStore('roles', 'readwrite');
+    return new Promise((resolve, reject) => {
+      const request = store.delete(id);
+      request.onsuccess = () => resolve();
+      request.onerror = () => reject(request.error);
+    });
+  }
+
+  public async saveSetting(key: string, value: any): Promise<void> {
+    const store = await this.getObjectStore('settings', 'readwrite');
+    return new Promise((resolve, reject) => {
+      const request = store.put({ key, value });
+      request.onsuccess = () => resolve();
+      request.onerror = () => reject(request.error);
+    });
+  }
+
+  public async getSetting<T>(key: string): Promise<T | null> {
+    const store = await this.getObjectStore('settings', 'readonly');
+    return new Promise((resolve, reject) => {
+      const request = store.get(key);
+      request.onsuccess = () => resolve(request.result?.value as T ?? null);
+      request.onerror = () => reject(request.error);
+    });
+  }
 }
 
-export const mcpDB = new MCPDatabase();
+export const dbService = DBService.getInstance();

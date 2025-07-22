@@ -1,4 +1,4 @@
-import llmConfig from '../config/llm-config.json';
+import llmConfig from "../config/llm-config.json";
 
 export interface ModelInfo {
   id?: string;
@@ -15,6 +15,7 @@ export interface ModelInfo {
 }
 
 export interface ProviderInfo {
+  id?: string;
   name: string;
   apiKeyEnvVar: string;
   baseUrl: string;
@@ -33,15 +34,6 @@ export interface ServiceConfig {
 
 export interface LLMConfig {
   providers: Record<string, ProviderInfo>;
-  serviceConfigs: Record<string, ServiceConfig>;
-  preferences: {
-    defaultService: string;
-    fallbackService: string;
-    retryAttempts: number;
-    timeoutMs: number;
-    enableCaching: boolean;
-    enableLogging: boolean;
-  };
 }
 
 export class LLMConfigManager {
@@ -53,7 +45,12 @@ export class LLMConfigManager {
 
   // Provider 관련 메서드
   getProviders(): Record<string, ProviderInfo> {
-    return this.config.providers;
+    return Object.entries(this.config.providers)
+      .map(([id, provider]) => ({ ...provider, id }))
+      .reduce((acc, v) => {
+        acc[v.id] = v;
+        return acc;
+      }, {} as Record<string, ProviderInfo>);
   }
 
   getProvider(providerId: string): ProviderInfo | null {
@@ -75,70 +72,75 @@ export class LLMConfigManager {
     return provider?.models || null;
   }
 
-  getAllModels(): Array<{ providerId: string; modelId: string; model: ModelInfo }> {
-    const models: Array<{ providerId: string; modelId: string; model: ModelInfo }> = [];
-    
-    for (const [providerId, provider] of Object.entries(this.config.providers)) {
+  getAllModels(): Array<{
+    providerId: string;
+    modelId: string;
+    model: ModelInfo;
+  }> {
+    const models: Array<{
+      providerId: string;
+      modelId: string;
+      model: ModelInfo;
+    }> = [];
+
+    for (const [providerId, provider] of Object.entries(
+      this.config.providers
+    )) {
       for (const [modelId, model] of Object.entries(provider.models)) {
         models.push({ providerId, modelId, model });
       }
     }
-    
+
     return models;
   }
 
-  // Service 관련 메서드
-  getServiceConfig(serviceId: string): ServiceConfig | null {
-    return this.config.serviceConfigs[serviceId] || null;
-  }
-
-  getServiceConfigs(): Record<string, ServiceConfig> {
-    return this.config.serviceConfigs;
-  }
 
   getServiceIds(): string[] {
-    return Object.keys(this.config.serviceConfigs);
+    return Object.keys(this.config.providers);
   }
 
-  getDefaultServiceConfig(): ServiceConfig {
-    const defaultServiceId = this.config.preferences.defaultService;
-    return this.config.serviceConfigs[defaultServiceId];
-  }
-
-  getFallbackServiceConfig(): ServiceConfig {
-    const fallbackServiceId = this.config.preferences.fallbackService;
-    return this.config.serviceConfigs[fallbackServiceId];
-  }
 
   // Langchain 모델 ID 생성
   getLangchainModelId(providerId: string, modelId: string): string {
     const providerMap: Record<string, string> = {
-      openai: 'openai',
-      anthropic: 'anthropic',
-      groq: 'groq',
-      google: 'google-genai'
+      openai: "openai",
+      anthropic: "anthropic",
+      groq: "groq",
+      google: "google-genai",
     };
-    
+
     const langchainProvider = providerMap[providerId];
     if (!langchainProvider) {
       throw new Error(`Unknown provider: ${providerId}`);
     }
-    
+
     return `${langchainProvider}:${modelId}`;
   }
 
   // 모델 필터링 메서드
-  getModelsWithTools(): Array<{ providerId: string; modelId: string; model: ModelInfo }> {
+  getModelsWithTools(): Array<{
+    providerId: string;
+    modelId: string;
+    model: ModelInfo;
+  }> {
     return this.getAllModels().filter(({ model }) => model.supportTools);
   }
 
-  getModelsWithReasoning(): Array<{ providerId: string; modelId: string; model: ModelInfo }> {
+  getModelsWithReasoning(): Array<{
+    providerId: string;
+    modelId: string;
+    model: ModelInfo;
+  }> {
     return this.getAllModels().filter(({ model }) => model.supportReasoning);
   }
 
-  getModelsByCostRange(maxInputCost: number, maxOutputCost: number): Array<{ providerId: string; modelId: string; model: ModelInfo }> {
-    return this.getAllModels().filter(({ model }) => 
-      model.cost.input <= maxInputCost && model.cost.output <= maxOutputCost
+  getModelsByCostRange(
+    maxInputCost: number,
+    maxOutputCost: number
+  ): Array<{ providerId: string; modelId: string; model: ModelInfo }> {
+    return this.getAllModels().filter(
+      ({ model }) =>
+        model.cost.input <= maxInputCost && model.cost.output <= maxOutputCost
     );
   }
 
@@ -146,10 +148,10 @@ export class LLMConfigManager {
   validateServiceConfig(serviceConfig: ServiceConfig): boolean {
     const provider = this.getProvider(serviceConfig.provider);
     if (!provider) return false;
-    
+
     const model = provider.models[serviceConfig.model];
     if (!model) return false;
-    
+
     return true;
   }
 
@@ -167,20 +169,21 @@ export class LLMConfigManager {
     if (requirements.needsTools) {
       candidates = candidates.filter(({ model }) => model.supportTools);
     }
-    
+
     if (requirements.needsReasoning) {
       candidates = candidates.filter(({ model }) => model.supportReasoning);
     }
-    
+
     if (requirements.maxCost !== undefined) {
-      candidates = candidates.filter(({ model }) => 
-        Math.max(model.cost.input, model.cost.output) <= requirements.maxCost!
+      candidates = candidates.filter(
+        ({ model }) =>
+          Math.max(model.cost.input, model.cost.output) <= requirements.maxCost!
       );
     }
-    
+
     if (requirements.contextWindow !== undefined) {
-      candidates = candidates.filter(({ model }) => 
-        model.contextWindow >= requirements.contextWindow!
+      candidates = candidates.filter(
+        ({ model }) => model.contextWindow >= requirements.contextWindow!
       );
     }
 
@@ -189,9 +192,10 @@ export class LLMConfigManager {
     // 정렬 및 선택
     if (requirements.preferSpeed) {
       // 비용이 낮은 모델을 속도가 빠른 것으로 간주
-      candidates.sort((a, b) => 
-        Math.max(a.model.cost.input, a.model.cost.output) - 
-        Math.max(b.model.cost.input, b.model.cost.output)
+      candidates.sort(
+        (a, b) =>
+          Math.max(a.model.cost.input, a.model.cost.output) -
+          Math.max(b.model.cost.input, b.model.cost.output)
       );
     } else {
       // 컨텍스트 윈도우가 큰 순으로 정렬 (성능 우선)
@@ -199,27 +203,6 @@ export class LLMConfigManager {
     }
 
     return candidates[0];
-  }
-
-  // Preferences 관련 메서드
-  getPreferences() {
-    return this.config.preferences;
-  }
-
-  getRetryAttempts(): number {
-    return this.config.preferences.retryAttempts;
-  }
-
-  getTimeoutMs(): number {
-    return this.config.preferences.timeoutMs;
-  }
-
-  isCachingEnabled(): boolean {
-    return this.config.preferences.enableCaching;
-  }
-
-  isLoggingEnabled(): boolean {
-    return this.config.preferences.enableLogging;
   }
 }
 
