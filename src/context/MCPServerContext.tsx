@@ -71,10 +71,12 @@ export const MCPServerProvider: React.FC<{ children: ReactNode }> = ({ children 
     let serverName: string | undefined;
     let toolName: string | undefined;
 
-    const parts = aiProvidedToolName.split(':');
+    // Use '__' as delimiter for URL and JSON safety
+    const delimiter = '__';
+    const parts = aiProvidedToolName.split(delimiter);
     if (parts.length >= 2) {
       serverName = parts[0];
-      toolName = parts.slice(1).join(':');
+      toolName = parts.slice(1).join(delimiter);
     }
 
     if (!serverName || !toolName) {

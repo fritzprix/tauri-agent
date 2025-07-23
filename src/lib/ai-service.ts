@@ -202,21 +202,21 @@ function convertSinglePropertyToGeminiType(prop: any): any {
   }
 }
 
-// Helper function to sanitize function names for Gemini
-function sanitizeFunctionName(name: string): string {
-  // Gemini requires: start with letter/underscore, alphanumeric + _ . -, max 64 chars
-  let sanitized = name
-    .replace(/:/g, '_') // Replace colons specifically 
-    .replace(/[^a-zA-Z0-9_.-]/g, '_') // Replace other invalid chars with underscore
-    .substring(0, 64); // Max 64 chars
+// // Helper function to sanitize function names for Gemini
+// function sanitizeFunctionName(name: string): string {
+//   // Gemini requires: start with letter/underscore, alphanumeric + _ . -, max 64 chars
+//   let sanitized = name
+//     .replace(/:/g, '_') // Replace colons specifically 
+//     .replace(/[^a-zA-Z0-9_.-]/g, '_') // Replace other invalid chars with underscore
+//     .substring(0, 64); // Max 64 chars
   
-  // Ensure it starts with letter or underscore
-  if (!/^[a-zA-Z_]/.test(sanitized)) {
-    sanitized = '_' + sanitized.substring(0, 63);
-  }
+//   // Ensure it starts with letter or underscore
+//   if (!/^[a-zA-Z_]/.test(sanitized)) {
+//     sanitized = '_' + sanitized.substring(0, 63);
+//   }
   
-  return sanitized;
-}
+//   return sanitized;
+// }
 
 // Updated tool conversion for Gemini - use parameters with Type enums
 function convertMCPToolToProviderFormat(mcpTool: MCPTool, provider: AIServiceProvider): ProviderToolType {
@@ -236,7 +236,7 @@ function convertMCPToolToProviderFormat(mcpTool: MCPTool, provider: AIServicePro
       return {
         type: "function",
         function: {
-          name: sanitizeFunctionName(mcpTool.name),
+          name: mcpTool.name,
           description: mcpTool.description,
           parameters: commonParameters,
         },
@@ -502,36 +502,43 @@ export class GroqService extends BaseAIService {
   private convertToGroqMessages(
     messages: StreamableMessage[],
     systemPrompt?: string
-  ) {
-    const groqMessages = messages.map((m) => {
-      if (m.tool_calls)
-        return {
-          role: "assistant" as const,
-          content: m.content || null,
-          tool_calls: m.tool_calls,
-        };
-      if (m.role === "tool")
-        return {
-          role: "tool" as const,
-          tool_call_id: m.id,
-          content: m.content,
-        };
-      if (m.thinking)
-        return {
-          role: "assistant" as const,
-          content: m.content,
-          thinking: m.thinking,
-        };
-      return {
-        role: m.role as "user" | "assistant" | "system",
-        content: m.content,
-      };
-    });
+  ): Groq.Chat.Completions.ChatCompletionMessageParam[] {
+    const groqMessages: Groq.Chat.Completions.ChatCompletionMessageParam[] = [];
 
     if (systemPrompt) {
-      groqMessages.unshift({ role: "system", content: systemPrompt });
+      groqMessages.push({ role: "system", content: systemPrompt });
     }
 
+    for (const m of messages) {
+      if (m.role === "user") {
+        groqMessages.push({ role: "user", content: m.content });
+      } else if (m.role === "assistant") {
+        if (m.tool_calls && m.tool_calls.length > 0) {
+          groqMessages.push({
+            role: "assistant",
+            content: m.content || null,
+            tool_calls: m.tool_calls,
+          });
+        } else if (m.thinking) {
+          groqMessages.push({
+            role: "assistant",
+            content: m.content,
+          });
+        } else {
+          groqMessages.push({ role: "assistant", content: m.content });
+        }
+      } else if (m.role === "tool") {
+        if (m.tool_call_id) {
+          groqMessages.push({
+            role: "tool",
+            tool_call_id: m.tool_call_id,
+            content: m.content,
+          });
+        } else {
+          logger.warn(`Tool message missing tool_call_id: ${JSON.stringify(m)}`);
+        }
+      }
+    }
     return groqMessages;
   }
 
@@ -625,30 +632,38 @@ export class OpenAIService extends BaseAIService {
   private convertToOpenAIMessages(
     messages: StreamableMessage[],
     systemPrompt?: string
-  ) {
-    const openaiMessages = messages.map((m) => {
-      if (m.tool_calls && m.tool_calls.length > 0)
-        return {
-          role: "assistant" as const,
-          content: m.content || null,
-          tool_calls: m.tool_calls,
-        };
-      if (m.role === "tool")
-        return {
-          role: "tool" as const,
-          tool_call_id: m.id,
-          content: m.content,
-        };
-      return {
-        role: m.role as "user" | "assistant" | "system",
-        content: m.content,
-      };
-    });
+  ): OpenAI.Chat.Completions.ChatCompletionMessageParam[] {
+    const openaiMessages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [];
 
     if (systemPrompt) {
-      openaiMessages.unshift({ role: "system", content: systemPrompt });
+      openaiMessages.push({ role: "system", content: systemPrompt });
     }
 
+    for (const m of messages) {
+      if (m.role === "user") {
+        openaiMessages.push({ role: "user", content: m.content });
+      } else if (m.role === "assistant") {
+        if (m.tool_calls && m.tool_calls.length > 0) {
+          openaiMessages.push({
+            role: "assistant",
+            content: m.content || null,
+            tool_calls: m.tool_calls,
+          });
+        } else {
+          openaiMessages.push({ role: "assistant", content: m.content });
+        }
+      } else if (m.role === "tool") {
+        if (m.tool_call_id) {
+          openaiMessages.push({
+            role: "tool",
+            tool_call_id: m.tool_call_id,
+            content: m.content,
+          });
+        } else {
+          logger.warn(`Tool message missing tool_call_id: ${JSON.stringify(m)}`);
+        }
+      }
+    }
     return openaiMessages;
   }
 
@@ -785,7 +800,7 @@ export class AnthropicService extends BaseAIService {
           content: [
             {
               type: "tool_result" as const,
-              tool_use_id: m.id,
+              tool_use_id: m.tool_call_id!,
               content: m.content,
             },
           ],
@@ -936,8 +951,39 @@ export class GeminiService extends BaseAIService {
             parts: [{ text: m.content }],
           });
         }
+      } else if (m.role === "tool") {
+        // Find the corresponding assistant message to get the function name
+        let functionName: string | undefined;
+        for (let j = messages.indexOf(m) - 1; j >= 0; j--) {
+          const prevMessage = messages[j];
+          if (prevMessage.role === "assistant" && prevMessage.tool_calls) {
+            const toolCall = prevMessage.tool_calls.find(
+              (tc) => tc.id === m.tool_call_id
+            );
+            if (toolCall) {
+              functionName = toolCall.function.name;
+              break;
+            }
+          }
+        }
+
+        if (functionName) {
+          geminiMessages.push({
+            role: "function", // Gemini expects 'function' role for tool results
+            parts: [
+              {
+                functionResponse: {
+                  name: functionName,
+                  response: JSON.parse(m.content), // Assuming tool content is JSON string
+                },
+              },
+            ],
+          });
+        } else {
+          logger.warn(`Could not find function name for tool message with tool_call_id: ${m.tool_call_id}`);
+          // Optionally, handle this error more robustly or skip the message
+        }
       }
-      // tool 메시지는 일단 제외하고 기본부터 테스트
     }
 
     return geminiMessages;

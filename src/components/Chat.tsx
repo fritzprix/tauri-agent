@@ -96,7 +96,7 @@ export default function Chat({ children }: ChatProps) {
     setAttachedFiles([]);
 
     try {
-      await submit(userMessage);
+      await submit([userMessage]);
     } catch (err) {
       logger.error('Error submitting message:', err);
     }

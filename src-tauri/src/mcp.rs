@@ -326,7 +326,7 @@ impl MCPServerManager {
                 Ok(mut tools) => {
                     // Prefix tool names with server name to avoid conflicts
                     for tool in &mut tools {
-                        tool.name = format!("{}:{}", server_name, tool.name);
+                        tool.name = format!("{}__{}", server_name, tool.name);
                     }
                     all_tools.extend(tools);
                 }

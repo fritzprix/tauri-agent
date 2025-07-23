@@ -9,7 +9,7 @@ export interface ChatContextType {
     addMessage: (message: StreamableMessage) => void;
     isLoading: boolean;
     error: Error | null;
-    submit: (userMessage?: StreamableMessage) => Promise<StreamableMessage>;
+    submit: (messages?: StreamableMessage[]) => Promise<StreamableMessage>;
 }
 
 
@@ -58,8 +58,8 @@ export const ChatContextProvider: React.FC<ChatProviderProps> = ({ children }) =
         setMessages(prev => [...prev, message]);
     }, []);
 
-    const submit = useCallback(async (messageToAdd?: StreamableMessage) => {
-        const newMessages = messageToAdd ? [...messages, messageToAdd] : messages;
+    const submit = useCallback(async (messageToAdd?: StreamableMessage[]) => {
+        const newMessages = messageToAdd ? [...messages, ...messageToAdd] : messages;
         if (messageToAdd) {
             setMessages(newMessages);
         }
