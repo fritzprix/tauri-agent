@@ -28,7 +28,16 @@ const CompactModelPicker: FC<ModelPickerProps> = ({ className = "" }) => {
   const selectedModelData = llmConfigManager.getModel(provider, model) || DEFAULT_MODEL_INFO;
 
   const onProviderChange = useCallback((provider: AIServiceProvider) => {
-    update({ preferredModel: { provider, model } });
+    const models = llmConfigManager.getModelsForProvider(provider);
+    if(!models) {
+      throw new Error(`no available models for ${provider}`);
+    }
+
+    const modelEntries = Object.entries(models);
+    if(modelEntries.length === 0){
+      throw new Error();
+    }    
+    update({ preferredModel: { provider, model: modelEntries[0][0] } });
   }, [update, model]);
 
   const onModelChange = useCallback((model: string) => {

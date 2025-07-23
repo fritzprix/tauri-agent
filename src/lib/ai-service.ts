@@ -404,13 +404,13 @@ export class OpenAIService extends BaseAIService {
     
     try {
       const openaiMessages = this.convertToOpenAIMessages(messages, options.systemPrompt);
+      logger.info("openai call : ", {options});
       
       const completion = await this.withRetry(() =>
         this.openai.chat.completions.create({
           model: options.modelName || config.defaultModel || "gpt-4-turbo",
           messages: openaiMessages,
-          max_tokens: config.maxTokens,
-          temperature: config.temperature,
+          max_completion_tokens: config.maxTokens,
           stream: true,
           tools: options.availableTools ? convertMCPToolsToProviderTools(options.availableTools, AIServiceProvider.OpenAI) as OpenAIChatCompletionTool[] : undefined,
           tool_choice: options.availableTools ? "auto" : undefined,
@@ -436,7 +436,7 @@ export class OpenAIService extends BaseAIService {
 
   private convertToOpenAIMessages(messages: StreamableMessage[], systemPrompt?: string) {
     const openaiMessages = messages.map(m => {
-      if (m.tool_calls) return { role: 'assistant' as const, content: m.content || null, tool_calls: m.tool_calls };
+      if (m.tool_calls && m.tool_calls.length > 0) return { role: 'assistant' as const, content: m.content || null, tool_calls: m.tool_calls };
       if (m.role === 'tool') return { role: 'tool' as const, tool_call_id: m.id, content: m.content };
       return { role: m.role as 'user' | 'assistant' | 'system', content: m.content };
     });
