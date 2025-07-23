@@ -1,48 +1,46 @@
 import { FC, useCallback, useMemo } from 'react';
-import { useSettings } from '../hooks/use-settings';
-import { AIServiceProvider } from '../lib/ai-service';
-import { llmConfigManager, ModelInfo } from '../lib/llm-config-manager';
 import { Dropdown } from './ui/Dropdown';
-
-
-
-const DEFAULT_MODEL_INFO: ModelInfo = {
-  contextWindow: 0, supportTools: false, supportReasoning: false, supportStreaming: false, cost: { input: 0, output: 0 }, description: "", name: ""
-}
+import { useModelOptions } from '../context/ModelProvider';
+import { AIServiceProvider } from '../lib/ai-service';
 
 interface ModelPickerProps {
   className?: string;
 }
 
 const CompactModelPicker: FC<ModelPickerProps> = ({ className = "" }) => {
-  const { value: { apiKeys, preferredModel: { model, provider } }, update, isLoading } = useSettings();
+  const {
+    modelId,
+    provider,
+    setProvider,
+    setModel,
+    isLoading,
+    apiKeys,
+    selectedModelData,
+    providerOptions,
+    modelOptions,
+  } = useModelOptions();
+
   const apiKeyStatus = useMemo(() => {
-    const key = apiKeys[provider]
+    const key = apiKeys[provider];
     return {
       text: provider,
-      configured: key && key.length > 0
-    }
+      configured: key && key.length > 0,
+    };
   }, [provider, apiKeys]);
-  const providerOptions = Object.entries(llmConfigManager.getProviders());
-  const modelOptions = Object.entries(llmConfigManager.getModelsForProvider(provider) || {});
-  const selectedModelData = llmConfigManager.getModel(provider, model) || DEFAULT_MODEL_INFO;
 
-  const onProviderChange = useCallback((provider: AIServiceProvider) => {
-    const models = llmConfigManager.getModelsForProvider(provider);
-    if(!models) {
-      throw new Error(`no available models for ${provider}`);
-    }
+  const onProviderChange = useCallback(
+    (newProvider: string) => {
+      setProvider(newProvider as AIServiceProvider);
+    },
+    [setProvider]
+  );
 
-    const modelEntries = Object.entries(models);
-    if(modelEntries.length === 0){
-      throw new Error();
-    }    
-    update({ preferredModel: { provider, model: modelEntries[0][0] } });
-  }, [update, model]);
-
-  const onModelChange = useCallback((model: string) => {
-    update({ preferredModel: { provider, model } });
-  }, [provider]);
+  const onModelChange = useCallback(
+    (newModel: string) => {
+      setModel(newModel);
+    },
+    [setModel]
+  );
 
   if (isLoading) {
     return <div className={`font-mono text-sm text-gray-400 animate-pulse ${className}`}>[loading...]</div>;
@@ -54,10 +52,7 @@ const CompactModelPicker: FC<ModelPickerProps> = ({ className = "" }) => {
         <div title={apiKeyStatus.text} className={`w-2 h-2 rounded-full flex-shrink-0 ${apiKeyStatus.configured ? 'bg-green-500' : 'bg-yellow-500'}`}></div>
       )}
       <Dropdown
-        options={providerOptions.map(([key, value]) => ({
-          label: value.name,
-          value: key
-        }))}
+        options={providerOptions}
         value={provider}
         placeholder="provider"
         onChange={onProviderChange}
@@ -66,14 +61,11 @@ const CompactModelPicker: FC<ModelPickerProps> = ({ className = "" }) => {
       />
       <span className="text-gray-600">/</span>
       <Dropdown
-        options={modelOptions.map(([key, value]) => ({
-          label: value.name,
-          value: key
-        }))}
-        value={model}
+        options={modelOptions}
+        value={modelId}
         placeholder="model"
         onChange={onModelChange}
-        disabled={!model || modelOptions.length === 0}
+        disabled={!modelId || modelOptions.length === 0}
         className="flex-grow min-w-0"
         variant="compact"
       />
@@ -88,25 +80,39 @@ const CompactModelPicker: FC<ModelPickerProps> = ({ className = "" }) => {
 
 // --- TERMINAL MODEL PICKER (refactored to match CompactModelPicker logic) ---
 const TerminalModelPicker: FC<ModelPickerProps> = ({ className = "" }) => {
-  const { value: { apiKeys, preferredModel: { model, provider } }, update, isLoading } = useSettings();
+  const {
+    modelId,
+    provider,
+    setProvider,
+    setModel,
+    isLoading,
+    apiKeys,
+    selectedModelData,
+    providerOptions,
+    modelOptions,
+  } = useModelOptions();
+
   const apiKeyStatus = useMemo(() => {
     const key = apiKeys[provider];
     return {
       text: provider,
-      configured: key.length > 0
+      configured: key && key.length > 0,
     };
   }, [provider, apiKeys]);
-  const providerOptions = Object.entries(llmConfigManager.getProviders()).map(([key, value]) => ({ label: key, value: value.name }));
-  const modelOptions = Object.entries(llmConfigManager.getModelsForProvider(provider) || {}).map(([key, value]) => ({ label: key, value: value.name }));
-  const selectedModelData = llmConfigManager.getModel(provider, model) || DEFAULT_MODEL_INFO;
 
-  const onProviderChange = useCallback((provider: AIServiceProvider) => {
-    update({ preferredModel: { provider, model } });
-  }, [update, model]);
+  const onProviderChange = useCallback(
+    (newProvider: string) => {
+      setProvider(newProvider as AIServiceProvider);
+    },
+    [setProvider]
+  );
 
-  const onModelChange = useCallback((model: string) => {
-    update({ preferredModel: { provider, model } });
-  }, [provider]);
+  const onModelChange = useCallback(
+    (newModel: string) => {
+      setModel(newModel);
+    },
+    [setModel]
+  );
 
   if (isLoading) {
     return (
@@ -138,7 +144,7 @@ const TerminalModelPicker: FC<ModelPickerProps> = ({ className = "" }) => {
           <label className="text-sm text-green-500">MODEL:</label>
           <Dropdown
             options={modelOptions}
-            value={model}
+            value={modelId}
             placeholder={provider ? "<select>" : "..."}
             onChange={onModelChange}
             disabled={!provider || modelOptions.length === 0}
