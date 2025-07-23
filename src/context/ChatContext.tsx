@@ -3,10 +3,6 @@ import { useAIService } from "../hooks/use-ai-service";
 import { useMCPServer } from "../hooks/use-mcp-server";
 import { StreamableMessage } from "../lib/ai-service";
 import { useRoleContext } from "./RoleContext";
-import { getLogger } from "../lib/logger";
-
-const logger = getLogger("ChatContext");
-
 
 export interface ChatContextType {
     messages: StreamableMessage[];
@@ -14,11 +10,6 @@ export interface ChatContextType {
     isLoading: boolean;
     error: Error | null;
     submit: (userMessage?: StreamableMessage) => Promise<StreamableMessage>;
-    mcpServerStatus: Record<string, boolean>;
-    isMCPConnecting: boolean;
-    connectToMCP: (role: any) => Promise<void>;
-    availableTools: any[];
-    executeToolCall: (toolCall: { id: string; type: 'function'; function: { name: string; arguments: string; } }) => Promise<{ role: 'tool'; content: string; tool_call_id: string }>;
 }
 
 
@@ -34,13 +25,13 @@ export const ChatContextProvider: React.FC<ChatProviderProps> = ({ children }) =
     const [messages, setMessages] = useState<StreamableMessage[]>([]);
     const { error, isLoading, response, submit: triggerAIService } = useAIService();
     const { currentRole } = useRoleContext();
-    const { availableTools, executeToolCall, connectToMCP, mcpServerStatus, isMCPConnecting } = useMCPServer();
+    const {  connectServers } = useMCPServer();
 
     useEffect(() => {
         if (currentRole) {
-            connectToMCP(currentRole);
+            connectServers(currentRole);
         }
-    }, [currentRole, connectToMCP]);
+    }, [currentRole, connectServers]);
 
     useEffect(() => {
         if (response) {
@@ -82,11 +73,6 @@ export const ChatContextProvider: React.FC<ChatProviderProps> = ({ children }) =
             isLoading,
             error,
             submit,
-            mcpServerStatus,
-            isMCPConnecting,
-            connectToMCP,
-            availableTools,
-            executeToolCall
         }}>
             {children}
         </ChatContext.Provider>

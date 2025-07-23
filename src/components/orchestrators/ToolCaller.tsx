@@ -1,9 +1,11 @@
 import { useEffect } from 'react';
 import { useChatContext } from '../../hooks/use-chat';
 import { createId } from '@paralleldrive/cuid2';
+import { useMCPServer } from '../../hooks/use-mcp-server';
 
 export const ToolCaller: React.FC = () => {
-  const { messages, addMessage, submit, executeToolCall } = useChatContext();
+  const { messages, addMessage, submit } = useChatContext();
+  const { executeToolCall } = useMCPServer();
 
   useEffect(() => {
     const lastMessage = messages[messages.length - 1];
