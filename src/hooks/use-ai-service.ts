@@ -54,6 +54,7 @@ export const useAIService = (config?: AIServiceConfig, role?: Role) => {
         });
 
         for await (const chunk of stream) {
+          logger.info("chunk : ", {chunk});
           const parsedChunk = JSON.parse(chunk);
           
           if (parsedChunk.thinking) {

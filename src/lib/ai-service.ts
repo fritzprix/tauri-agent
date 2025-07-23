@@ -331,6 +331,7 @@ export class GroqService extends BaseAIService {
           model: options.modelName || config.defaultModel || "llama-3.1-8b-instant",
           temperature: config.temperature,
           max_tokens: config.maxTokens,
+          reasoning_format:"parsed",
           stream: true,
           tools: options.availableTools ? convertMCPToolsToProviderTools(options.availableTools, AIServiceProvider.Groq) as GroqChatCompletionTool[] : undefined,
           tool_choice: options.availableTools ? "auto" : undefined,
@@ -338,6 +339,7 @@ export class GroqService extends BaseAIService {
       );
 
       for await (const chunk of chatCompletion) {
+        logger.info("inside chunk : ", {chunk: JSON.stringify(chunk)});
         if (chunk.choices[0]?.delta?.reasoning) {
           yield JSON.stringify({ thinking: chunk.choices[0].delta.reasoning });
         } else if (chunk.choices[0]?.delta?.tool_calls) {
