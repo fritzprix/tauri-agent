@@ -8,16 +8,14 @@ import {
 import { getLogger } from "../lib/logger";
 import { useSettings } from "./use-settings";
 import { useMCPServer } from "./use-mcp-server";
-import { useLocalTools } from "./use-local-tools";
+import { useLocalTools } from "../context/LocalToolContext";
 import { useAssistantContext } from "../context/AssistantContext";
 
 const logger = getLogger("useAIService");
 
 const DEFAULT_SYSTEM_PROMPT = "You are a helpful assistant.";
 
-export const useAIService = (
-  config?: AIServiceConfig,
-) => {
+export const useAIService = (config?: AIServiceConfig) => {
   const {
     value: {
       preferredModel: { model, provider },

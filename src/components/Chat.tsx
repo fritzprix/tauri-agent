@@ -3,7 +3,7 @@ import React, { useEffect, useRef, useState, useMemo } from "react";
 import { useAssistantContext } from "../context/AssistantContext";
 import { useChatContext } from "../hooks/use-chat";
 import { useMCPServer } from "../hooks/use-mcp-server";
-import { useLocalTools } from "../hooks/use-local-tools";
+import { useLocalTools } from "../context/LocalToolContext";
 import { StreamableMessage } from "../lib/ai-service";
 import { getLogger } from "../lib/logger";
 import AssistantManager from "./AssistantManager";

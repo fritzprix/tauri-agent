@@ -8,10 +8,9 @@ import {
   useState,
 } from "react";
 import { useAsyncFn } from "react-use";
-import { useMCPServer } from "../hooks/use-mcp-server";
 import { dbService } from "../lib/db";
-import { Assistant } from "../types/chat";
 import { getLogger } from "../lib/logger";
+import { Assistant } from "../types/chat";
 
 const logger = getLogger("AssistantContext");
 
@@ -67,8 +66,6 @@ export const AssistantContextProvider = ({
       return fetchedAssistants;
     }, []);
 
-  const { connectServers } = useMCPServer();
-
   useEffect(() => {
     loadAssistants();
   }, [loadAssistants]);
@@ -80,15 +77,6 @@ export const AssistantContextProvider = ({
       setCurrentAssistant(a);
     }
   }, [loading, assistants]);
-
-  useEffect(() => {
-    if (currentAssistant) {
-      logger.debug("Current assistant changed, connecting to MCP", {
-        assistant: currentAssistant.name,
-      });
-      connectServers(currentAssistant);
-    }
-  }, [currentAssistant, connectServers]);
 
   const [{}, saveAssistant] = useAsyncFn(
     async (

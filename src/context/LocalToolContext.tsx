@@ -7,6 +7,8 @@ import React, {
   useContext,
 } from "react";
 import { MCPTool } from "../lib/tauri-mcp-client";
+import { Tool } from "../types/chat";
+import { useAssistantContext } from "./AssistantContext";
 
 /**
  * Represents a single tool within a service, pairing its definition with its handler.
@@ -32,7 +34,6 @@ export interface LocalService {
 interface LocalToolContextType {
   registerService: (service: LocalService) => void;
   unregisterService: (serviceName: string) => void;
-  availableTools: MCPTool[];
   getToolsByService: (serviceName: string) => MCPTool[];
   getAvailableServices: () => string[];
   getService: (serviceName: string) => LocalService | undefined;
@@ -41,6 +42,8 @@ interface LocalToolContextType {
     id: string;
     function: { name: string; arguments: string };
   }) => Promise<{ role: "tool"; content: string; tool_call_id: string }>;
+  availableTools: Tool[];
+  isLocalTool: (toolName: string) => boolean;
 }
 
 const LocalToolContext = createContext<LocalToolContextType | null>(null);
@@ -68,16 +71,6 @@ export function LocalToolProvider({ children }: { children: React.ReactNode }) {
     },
     [forceUpdate]
   );
-
-  // The list of available tools is derived from all registered services.
-  // It is memoized and only recalculated when the version number changes.
-  const availableTools = useMemo(() => {
-    const allTools: MCPTool[] = [];
-    for (const service of servicesRef.current.values()) {
-      service.tools.forEach((t) => allTools.push(t.toolDefinition));
-    }
-    return allTools;
-  }, [version]);
 
   const getToolsByService = useCallback((serviceName: string) => {
     const service = servicesRef.current.get(serviceName);
@@ -142,6 +135,40 @@ export function LocalToolProvider({ children }: { children: React.ReactNode }) {
     []
   );
 
+  const { currentAssistant } = useAssistantContext();
+
+  const allRegisteredTools = useMemo(() => {
+    const allTools: MCPTool[] = [];
+    for (const service of servicesRef.current.values()) {
+      service.tools.forEach((t) => allTools.push(t.toolDefinition));
+    }
+    return allTools;
+  }, [version]);
+
+  const availableTools = useMemo(() => {
+    if (!currentAssistant?.localServices) {
+      return [];
+    }
+
+    const enabledTools: Tool[] = [];
+    for (const serviceName of currentAssistant.localServices) {
+      const service = getService(serviceName);
+      if (service) {
+        for (const tool of service.tools) {
+          enabledTools.push({ ...tool.toolDefinition, isLocal: true });
+        }
+      }
+    }
+    return enabledTools;
+  }, [currentAssistant, getService, version]);
+
+  const isLocalTool = useCallback(
+    (toolName: string) => {
+      return allRegisteredTools.some((tool) => tool.name === toolName);
+    },
+    [allRegisteredTools]
+  );
+
   const value = useMemo(
     () => ({
       registerService,
@@ -152,6 +179,7 @@ export function LocalToolProvider({ children }: { children: React.ReactNode }) {
       getService,
       getToolByName,
       executeToolCall,
+      isLocalTool,
     }),
     [
       registerService,
@@ -162,6 +190,7 @@ export function LocalToolProvider({ children }: { children: React.ReactNode }) {
       getService,
       getToolByName,
       executeToolCall,
+      isLocalTool,
     ]
   );
 

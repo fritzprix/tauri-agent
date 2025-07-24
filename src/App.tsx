@@ -7,6 +7,9 @@ import "./globals.css";
 import { ModelOptionsProvider } from "./context/ModelProvider";
 import { LocalToolProvider } from "./context/LocalToolContext";
 import { WeatherTool } from "./components/WeatherTool";
+import { AssistantContextProvider } from "./context/AssistantContext";
+import { MCPServerProvider } from "./context/MCPServerContext";
+import { SettingsProvider } from "./context/SettingsContext";
 
 function App() {
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
@@ -18,18 +21,24 @@ function App() {
         <Button onClick={() => setIsSettingsModalOpen(true)}>Settings</Button>
       </header>
       <main className="flex-1 overflow-hidden">
-        <ModelOptionsProvider>
-          <LocalToolProvider>
-            <WeatherTool />
-            <ChatContextProvider>
-              <Chat />
-            </ChatContextProvider>
-          </LocalToolProvider>
-          <SettingsModal
-            isOpen={isSettingsModalOpen}
-            onClose={() => setIsSettingsModalOpen(false)}
-          />
-        </ModelOptionsProvider>
+        <SettingsProvider>
+          <AssistantContextProvider>
+            <ModelOptionsProvider>
+              <MCPServerProvider>
+                <LocalToolProvider>
+                  <WeatherTool />
+                  <ChatContextProvider>
+                    <Chat />
+                  </ChatContextProvider>
+                </LocalToolProvider>
+              </MCPServerProvider>
+              <SettingsModal
+                isOpen={isSettingsModalOpen}
+                onClose={() => setIsSettingsModalOpen(false)}
+              />
+            </ModelOptionsProvider>
+          </AssistantContextProvider>
+        </SettingsProvider>
       </main>
     </div>
   );

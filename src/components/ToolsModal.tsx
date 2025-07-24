@@ -1,5 +1,5 @@
 import React from "react";
-import { useLocalTools } from "../hooks/use-local-tools";
+import { useLocalTools } from "../context/LocalToolContext";
 import { useMCPServer } from "../hooks/use-mcp-server";
 
 interface ToolsModalProps {

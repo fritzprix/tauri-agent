@@ -1,8 +1,16 @@
-import React, { createContext, ReactNode, useCallback, useState } from "react";
+import React, {
+  createContext,
+  ReactNode,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 import { useAsyncFn } from "react-use";
 import { Assistant } from "../lib/db";
 import { getLogger } from "../lib/logger";
 import { MCPTool, tauriMCPClient } from "../lib/tauri-mcp-client";
+import { useAssistantContext } from "./AssistantContext";
 
 const logger = getLogger("MCPServerContext");
 
@@ -27,6 +35,7 @@ export const MCPServerProvider: React.FC<{ children: ReactNode }> = ({
 }) => {
   const [availableTools, setAvailableTools] = useState<MCPTool[]>([]);
   const [serverStatus, setServerStatus] = useState<Record<string, boolean>>({});
+  const { currentAssistant } = useAssistantContext();
   const [{ loading: isConnecting }, connectServers] = useAsyncFn(
     async (assistant: Assistant) => {
       const serverStatus: Record<string, boolean> = {};
@@ -144,13 +153,22 @@ export const MCPServerProvider: React.FC<{ children: ReactNode }> = ({
     [],
   );
 
-  const value = {
-    availableTools,
-    isConnecting,
-    status: serverStatus,
-    connectServers,
-    executeToolCall,
-  };
+  useEffect(() => {
+    if (currentAssistant) {
+      connectServers(currentAssistant);
+    }
+  }, [connectServers, currentAssistant]);
+
+  const value: MCPServerContextType = useMemo(
+    () => ({
+      availableTools,
+      isConnecting,
+      status: serverStatus,
+      connectServers,
+      executeToolCall,
+    }),
+    [],
+  );
 
   return (
     <MCPServerContext.Provider value={value}>

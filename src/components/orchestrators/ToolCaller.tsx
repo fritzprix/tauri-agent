@@ -1,8 +1,8 @@
-import { useEffect } from "react";
-import { useChatContext } from "../../hooks/use-chat";
 import { createId } from "@paralleldrive/cuid2";
+import { useEffect } from "react";
+import { useLocalTools } from "../../context/LocalToolContext";
+import { useChatContext } from "../../hooks/use-chat";
 import { useMCPServer } from "../../hooks/use-mcp-server";
-import { useLocalTools } from "../../hooks/use-local-tools";
 import { StreamableMessage } from "../../lib/ai-service";
 
 export const ToolCaller: React.FC = () => {
@@ -23,8 +23,10 @@ export const ToolCaller: React.FC = () => {
         const toolResults: StreamableMessage[] = [];
         for (const toolCall of lastMessage.tool_calls!) {
           const toolName = toolCall.function.name;
-        const callFunction = isLocalTool(toolName) ? callLocalTool : callMcpTool;
-        const result = await callFunction(toolCall);
+          const callFunction = isLocalTool(toolName)
+            ? callLocalTool
+            : callMcpTool;
+          const result = await callFunction(toolCall);
           toolResults.push({
             id: createId(),
             role: "tool",
@@ -36,7 +38,7 @@ export const ToolCaller: React.FC = () => {
       };
       execute();
     }
-  }, [messages, addMessage, submit]);
+  }, [messages, addMessage, submit, isLocalTool]);
 
   return null;
 };
