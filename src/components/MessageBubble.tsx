@@ -130,8 +130,12 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({ message, currentRoleName 
                   key={index}
                   className="inline-flex items-center gap-2 px-3 py-1 bg-white/10 rounded-full text-xs"
                 >
-                  <span className="text-blue-400">{tool_call.function.name}</span>
-                  <span className="truncate max-w-32">{tool_call.function.arguments}</span>
+                  {tool_call.function && (
+                    <>
+                      <span className="text-blue-400">{tool_call.function.name}</span>
+                      <span className="truncate max-w-32">{tool_call.function.arguments}</span>
+                    </>
+                  )}
                 </div>
               ))}
             </div>

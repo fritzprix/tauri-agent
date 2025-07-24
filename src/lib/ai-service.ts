@@ -1,3 +1,4 @@
+import { createId } from "@paralleldrive/cuid2";
 import Groq from "groq-sdk";
 import OpenAI from "openai";
 import Anthropic from "@anthropic-ai/sdk";
@@ -893,7 +894,16 @@ export class GeminiService extends BaseAIService {
 
       for await (const chunk of result) {
         if (chunk.functionCalls && chunk.functionCalls.length > 0) {
-          yield JSON.stringify({ tool_calls: chunk.functionCalls });
+          yield JSON.stringify({
+            tool_calls: chunk.functionCalls.map((fc: any) => ({
+              id: createId(), // Generate a new ID for each tool call
+              type: "function",
+              function: {
+                name: fc.name,
+                arguments: JSON.stringify(fc.args), // Convert args object to JSON string
+              },
+            })),
+          });
         } else if (chunk.text) {
           yield JSON.stringify({ content: chunk.text });
         }
