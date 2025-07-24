@@ -155,6 +155,7 @@ export const MCPServerProvider: React.FC<{ children: ReactNode }> = ({
 
   useEffect(() => {
     if (currentAssistant) {
+      logger.info("connect : ", { currentAssistant: currentAssistant.name });
       connectServers(currentAssistant);
     }
   }, [connectServers, currentAssistant]);
@@ -167,7 +168,13 @@ export const MCPServerProvider: React.FC<{ children: ReactNode }> = ({
       connectServers,
       executeToolCall,
     }),
-    [],
+    [
+      availableTools,
+      isConnecting,
+      serverStatus,
+      connectServers,
+      executeToolCall,
+    ],
   );
 
   return (

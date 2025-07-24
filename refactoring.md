@@ -30,7 +30,7 @@
        - 작업 결과를 사용자에게 정리해서 전달하고, 재귀를 종료합니다.
        - `addMessage`를 사용합니다.
 
-- 활성화 시, `useAssistantContext`로 Assistant를 `MultiAgentOrchestrator`로 설정합니다.
+- 활성화 시, `useAssistantContext`로 Assistant를 `MultiAgentOrchestrator`로 설정합니다. (setCurrentAssistant를 호출하면 Assistant에 설정된 localService 및 MCP를 자동 연결함)
 - 사용자의 요청에 대해 위 6가지 도구로 대응합니다.
 - `useChatContext`의 messages를 모니터링합니다.
   - 마지막 메시지가 tool_call이 아니고, `MultiAgentOrchestrator`가 보낸 메시지가 아니라면, 자동으로 `submit()`을 호출해 응답을 생성합니다.
@@ -40,29 +40,29 @@
 
 ### UI/UX
 
-- 기존의 viewless component(`ToolCaller.tsx`)와 달리, 활성화 여부를 체크할 수 있는 간단한 뷰를 제공합니다.
-- 이 뷰는 확장 가능한 컨테이너로, `Chat.tsx`의 입력창 근처에 배치합니다.
-  - `Chat.tsx`의 children이 자연스럽게 렌더링되도록 합니다.
+- Unlike the existing viewless component (`ToolCaller.tsx`), provide a simple view to check whether it is activated.
+- This view is an expandable container, placed near the input box of `Chat.tsx`.
+  - Ensure that the children of `Chat.tsx` are rendered naturally.
 
-### 고려사항
+### Considerations
 
-- 각 메시지가 어떤 Assistant에 의해 생성됐는지 상태를 관리해야 합니다.
-  - 모든 메시지에 Assistant 정보(최소 이름)를 포함시켜야 하며, API 호출 시 prompt에도 반영해야 합니다.
+- You must manage the state of which Assistant created each message.
+  - All messages must include Assistant information (at least the name), and this should also be reflected in the prompt when making API calls.
 
-### 재귀 안전성
+### Recursion Safety
 
-- Orchestrator의 재귀 호출이 무한 반복되지 않도록 최대 재귀 깊이 제한 또는 반복 횟수 제한을 둡니다.
-- 예외 상황(예: Assistant가 응답하지 않거나, 계획이 끝나지 않는 경우)에서 재귀를 안전하게 종료할 수 있는 로직을 추가합니다.
+- To prevent infinite recursion of the Orchestrator, set a maximum recursion depth or limit the number of iterations.
+- Add logic to safely terminate recursion in exceptional cases (e.g., if an Assistant does not respond or the plan never completes).
 
-### 메시지 구조 명확화
+### Message Structure Clarification
 
-- 각 메시지에는 아래와 같은 구조를 권장합니다:
-  
+- The following structure is recommended for each message: (Modify the one already defined in `./src/lib/ai-service.ts` as needed)
+
   ```ts
   export interface StreamableMessage {
     id: string;
     content: string;
-    assistantName: string; // 메시지를 생성한 Assistant 이름
+    assistantName: string; // Name of the Assistant that created the message
     role: "user" | "assistant" | "system" | "tool";
     thinking?: string;
     isStreaming?: boolean;

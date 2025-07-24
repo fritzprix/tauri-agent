@@ -2,11 +2,11 @@
 
 import { useCallback, useState } from "react";
 import { useAssistantContext } from "../context/AssistantContext";
-import { Assistant } from "../types/chat";
-import { getLogger } from "../lib/logger";
-import { Badge, Button, Input, Modal, StatusIndicator, Textarea } from "./ui";
-import { useMCPServer } from "../hooks/use-mcp-server";
 import { useLocalTools } from "../context/LocalToolContext";
+import { useMCPServer } from "../hooks/use-mcp-server";
+import { getLogger } from "../lib/logger";
+import { Assistant } from "../types/chat";
+import { Badge, Button, Input, Modal, StatusIndicator, Textarea } from "./ui";
 
 const logger = getLogger("AssistantManager");
 
@@ -22,11 +22,7 @@ export default function AssistantManager({ onClose }: AssistantManagerProps) {
     deleteAssistant,
     setCurrentAssistant,
   } = useAssistantContext();
-  const {
-    status,
-    isConnecting: isCheckingStatus,
-    connectServers,
-  } = useMCPServer();
+  const { status, isConnecting: isCheckingStatus } = useMCPServer();
   const { getAvailableServices, getToolsByService } = useLocalTools();
 
   const [editingAssistant, setEditingAssistant] =
@@ -69,7 +65,6 @@ export default function AssistantManager({ onClose }: AssistantManagerProps) {
   };
 
   const handleSaveAssistant = async () => {
-    logger.info("SAVE!!!!!!");
     if (!editingAssistant) return;
     let assistantToSave = { ...editingAssistant } as Assistant;
     try {
@@ -82,7 +77,7 @@ export default function AssistantManager({ onClose }: AssistantManagerProps) {
       return;
     }
 
-    logger.info("saved : ", {assistantToSave});
+    logger.info("saved : ", { assistantToSave });
 
     await saveAssistant(assistantToSave, mcpConfigText);
     setEditingAssistant(null);
@@ -94,9 +89,8 @@ export default function AssistantManager({ onClose }: AssistantManagerProps) {
   const handleSelectAssistant = useCallback(
     (assistant: Assistant) => {
       setCurrentAssistant(assistant);
-      connectServers(assistant);
     },
-    [connectServers, setCurrentAssistant],
+    [setCurrentAssistant],
   );
 
   const handleDeleteAssistant = async (assistant: Assistant) => {
@@ -221,9 +215,7 @@ export default function AssistantManager({ onClose }: AssistantManagerProps) {
                     {assistant.systemPrompt}
                   </p>
                   <div className="text-xs text-gray-500 mb-2">
-                    MCP 서버:{
-                      " "
-                    }
+                    MCP 서버:{" "}
                     {assistant.mcpConfig?.mcpServers
                       ? Object.keys(assistant.mcpConfig.mcpServers).length
                       : 0}
@@ -333,57 +325,60 @@ export default function AssistantManager({ onClose }: AssistantManagerProps) {
                     }))
                   }
                   placeholder="AI가 수행할 역할과 행동 방식을 설명하세요..."
-                    className="h-32"
-                  />
-                </div>
+                  className="h-32"
+                />
+              </div>
 
-                <div>
-                  <label className="text-gray-400 font-medium">
-                    로컬 서비스 활성화
-                  </label>
-                  <div className="space-y-2 mt-2 p-2 border border-gray-700 rounded-md">
-                    {getAvailableServices().map((serviceName) => (
-                      <div key={serviceName}>
-                        <h4 className="text-sm font-semibold text-gray-300 mb-1">
-                          {serviceName}
-                        </h4>
-                        <div className="space-y-1 pl-2">
-                          {getToolsByService(serviceName).map((tool) => (
-                            <div key={tool.name} className="flex items-center">
-                              <input
-                                type="checkbox"
-                                id={`tool-${tool.name}`}
-                                checked={editingAssistant?.localServices?.includes(
+              <div>
+                <label className="text-gray-400 font-medium">
+                  로컬 서비스 활성화
+                </label>
+                <div className="space-y-2 mt-2 p-2 border border-gray-700 rounded-md">
+                  {getAvailableServices().map((serviceName) => (
+                    <div key={serviceName}>
+                      <h4 className="text-sm font-semibold text-gray-300 mb-1">
+                        {serviceName}
+                      </h4>
+                      <div className="space-y-1 pl-2">
+                        {getToolsByService(serviceName).map((tool) => (
+                          <div key={tool.name} className="flex items-center">
+                            <input
+                              type="checkbox"
+                              id={`tool-${tool.name}`}
+                              checked={
+                                editingAssistant?.localServices?.includes(
                                   serviceName,
-                                ) || false}
-                                onChange={(e) => {
-                                  const newLocalServices = e.target.checked
-                                    ? [
-                                        ...(editingAssistant?.localServices || []),
-                                        serviceName,
-                                      ]
-                                    : editingAssistant?.localServices?.filter(
-                                        (s: string) => s !== serviceName,
-                                      ) || [];
-                                  setEditingAssistant((prev) => ({
-                                    ...prev,
-                                    localServices: newLocalServices,
-                                  }));
-                                }}
-                                className="mr-2"
-                              />
-                              <label
-                                htmlFor={`tool-${tool.name}`}
-                                className="text-sm text-gray-400"
-                              >
-                                {tool.name}
-                              </label>
-                            </div>
-                          ))}
-                        </div>
+                                ) || false
+                              }
+                              onChange={(e) => {
+                                const newLocalServices = e.target.checked
+                                  ? [
+                                      ...(editingAssistant?.localServices ||
+                                        []),
+                                      serviceName,
+                                    ]
+                                  : editingAssistant?.localServices?.filter(
+                                      (s: string) => s !== serviceName,
+                                    ) || [];
+                                setEditingAssistant((prev) => ({
+                                  ...prev,
+                                  localServices: newLocalServices,
+                                }));
+                              }}
+                              className="mr-2"
+                            />
+                            <label
+                              htmlFor={`tool-${tool.name}`}
+                              className="text-sm text-gray-400"
+                            >
+                              {tool.name}
+                            </label>
+                          </div>
+                        ))}
                       </div>
-                    ))}
-                  </div>
+                    </div>
+                  ))}
+                </div>
 
                 <div>
                   <div className="flex justify-between items-center mb-2">
@@ -422,7 +417,7 @@ export default function AssistantManager({ onClose }: AssistantManagerProps) {
       "env": {}
     },
     "sequential-thinking": {
-      "command": "npx", 
+      "command": "npx",
       "args": ["-y", "@modelcontextprotocol/server-sequential-thinking"],
       "env": {}
     }
