@@ -1,11 +1,17 @@
-import React, { createContext, useCallback, useContext, useEffect, useMemo } from 'react';
+import React, {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+} from "react";
 import { useAsyncFn } from "react-use";
-import { AIServiceProvider } from '../lib/ai-service';
-import { dbService } from '../lib/db';
-import { llmConfigManager } from '../lib/llm-config-manager';
-import { getLogger } from '../lib/logger';
+import { AIServiceProvider } from "../lib/ai-service";
+import { dbService } from "../lib/db";
+import { llmConfigManager } from "../lib/llm-config-manager";
+import { getLogger } from "../lib/logger";
 
-const logger = getLogger('SettingsContext');
+const logger = getLogger("SettingsContext");
 
 interface ModelChoice {
   provider: AIServiceProvider;
@@ -20,16 +26,14 @@ export interface Settings {
 
 const DEFAULT_MODEL = llmConfigManager.recommendModel({});
 
-
 export const DEFAULT_SETTING: Settings = {
   apiKeys: {} as Record<AIServiceProvider, string>,
   preferredModel: {
     provider: (DEFAULT_MODEL?.providerId || "openai") as AIServiceProvider,
-    model: (DEFAULT_MODEL?.modelId || ""),
+    model: DEFAULT_MODEL?.modelId || "",
   },
-  windowSize: 20
-}
-
+  windowSize: 20,
+};
 
 interface SettingsContextType {
   value: Settings;
@@ -38,59 +42,67 @@ interface SettingsContextType {
   error: Error | null;
 }
 
-export const SettingsContext = createContext<SettingsContextType | undefined>(undefined);
+export const SettingsContext = createContext<SettingsContextType | undefined>(
+  undefined,
+);
 
 export function SettingsProvider({ children }: { children: React.ReactNode }) {
   const [{ value, loading, error }, load] = useAsyncFn(async () => {
     try {
       const [apiKeys, preferredModel, windowSize] = await Promise.all([
-        dbService.getSetting<Record<AIServiceProvider, string>>('apiKeys'),
-        dbService.getSetting<ModelChoice>('preferredModel'),
-        dbService.getSetting<number>('windowSize')
+        dbService.getSetting<Record<AIServiceProvider, string>>("apiKeys"),
+        dbService.getSetting<ModelChoice>("preferredModel"),
+        dbService.getSetting<number>("windowSize"),
       ]);
       const settings: Settings = {
         ...DEFAULT_SETTING,
         ...(apiKeys ? { apiKeys } : {}),
         ...(preferredModel ? { preferredModel } : {}),
-        ...(windowSize != null ? { windowSize } : {})
+        ...(windowSize != null ? { windowSize } : {}),
       };
       return settings;
     } catch (e) {
-      logger.error('Failed to load settings', e);
+      logger.error("Failed to load settings", e);
       throw e;
     }
   }, []);
 
   useEffect(() => {
-    load()
+    load();
   }, [load]);
 
   // Update method
-  const update = useCallback(async (settings: Partial<Settings>) => {
-    try {
-      if (settings.apiKeys) {
-        const newApiKeys = { ...(value?.apiKeys || {}), ...settings.apiKeys };
-        await dbService.saveSetting('apiKeys', newApiKeys);
+  const update = useCallback(
+    async (settings: Partial<Settings>) => {
+      try {
+        if (settings.apiKeys) {
+          const newApiKeys = { ...(value?.apiKeys || {}), ...settings.apiKeys };
+          await dbService.saveSetting("apiKeys", newApiKeys);
+        }
+        if (settings.preferredModel) {
+          await dbService.saveSetting(
+            "preferredModel",
+            settings.preferredModel,
+          );
+        }
+        if (settings.windowSize != null) {
+          await dbService.saveSetting("windowSize", settings.windowSize);
+        }
+        await load();
+      } catch (e) {
+        logger.error("Failed to update settings", e);
+        throw e;
       }
-      if (settings.preferredModel) {
-        await dbService.saveSetting('preferredModel', settings.preferredModel);
-      }
-      if (settings.windowSize != null) {
-        await dbService.saveSetting('windowSize', settings.windowSize);
-      }
-      await load();
-    } catch (e) {
-      logger.error('Failed to update settings', e);
-      throw e;
-    }
-  }, [load, value]);
+    },
+    [load, value],
+  );
 
   const contextValue: SettingsContextType = useMemo(() => {
     return {
       value: value || DEFAULT_SETTING,
       isLoading: loading,
       update,
-      error: error ?? null
+      error: error ?? null,
     };
   }, [value, loading, update, error]);
 
@@ -99,12 +111,12 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
       {children}
     </SettingsContext.Provider>
   );
-};
+}
 
 export const useSettings = () => {
   const context = useContext(SettingsContext);
   if (!context) {
-    throw new Error('useSettings must be used within a SettingsProvider');
+    throw new Error("useSettings must be used within a SettingsProvider");
   }
   return context;
 };

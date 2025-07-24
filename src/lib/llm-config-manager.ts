@@ -47,10 +47,13 @@ export class LLMConfigManager {
   getProviders(): Record<string, ProviderInfo> {
     return Object.entries(this.config.providers)
       .map(([id, provider]) => ({ ...provider, id }))
-      .reduce((acc, v) => {
-        acc[v.id] = v;
-        return acc;
-      }, {} as Record<string, ProviderInfo>);
+      .reduce(
+        (acc, v) => {
+          acc[v.id] = v;
+          return acc;
+        },
+        {} as Record<string, ProviderInfo>,
+      );
   }
 
   getProvider(providerId: string): ProviderInfo | null {
@@ -84,7 +87,7 @@ export class LLMConfigManager {
     }> = [];
 
     for (const [providerId, provider] of Object.entries(
-      this.config.providers
+      this.config.providers,
     )) {
       for (const [modelId, model] of Object.entries(provider.models)) {
         models.push({ providerId, modelId, model });
@@ -94,11 +97,9 @@ export class LLMConfigManager {
     return models;
   }
 
-
   getServiceIds(): string[] {
     return Object.keys(this.config.providers);
   }
-
 
   // Langchain 모델 ID 생성
   getLangchainModelId(providerId: string, modelId: string): string {
@@ -136,11 +137,11 @@ export class LLMConfigManager {
 
   getModelsByCostRange(
     maxInputCost: number,
-    maxOutputCost: number
+    maxOutputCost: number,
   ): Array<{ providerId: string; modelId: string; model: ModelInfo }> {
     return this.getAllModels().filter(
       ({ model }) =>
-        model.cost.input <= maxInputCost && model.cost.output <= maxOutputCost
+        model.cost.input <= maxInputCost && model.cost.output <= maxOutputCost,
     );
   }
 
@@ -177,13 +178,14 @@ export class LLMConfigManager {
     if (requirements.maxCost !== undefined) {
       candidates = candidates.filter(
         ({ model }) =>
-          Math.max(model.cost.input, model.cost.output) <= requirements.maxCost!
+          Math.max(model.cost.input, model.cost.output) <=
+          requirements.maxCost!,
       );
     }
 
     if (requirements.contextWindow !== undefined) {
       candidates = candidates.filter(
-        ({ model }) => model.contextWindow >= requirements.contextWindow!
+        ({ model }) => model.contextWindow >= requirements.contextWindow!,
       );
     }
 
@@ -195,7 +197,7 @@ export class LLMConfigManager {
       candidates.sort(
         (a, b) =>
           Math.max(a.model.cost.input, a.model.cost.output) -
-          Math.max(b.model.cost.input, b.model.cost.output)
+          Math.max(b.model.cost.input, b.model.cost.output),
       );
     } else {
       // 컨텍스트 윈도우가 큰 순으로 정렬 (성능 우선)

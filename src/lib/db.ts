@@ -1,60 +1,50 @@
-import { getLogger } from './logger';
-
-const logger = getLogger('DBService');
+import Dexie, { Table } from "dexie";
 
 // --- TYPE DEFINITIONS ---
 // These types are used within the application logic.
-// The DB service will handle conversion to storable formats.
-export interface Role {
+export interface Assistant {
   id: string;
   name: string;
   systemPrompt: string;
   mcpConfig: {
-    mcpServers?: Record<string, {
-      command: string;
-      args?: string[];
-      env?: Record<string, string>;
-    }>;
+    mcpServers?: Record<
+      string,
+      {
+        command: string;
+        args?: string[];
+        env?: Record<string, string>;
+      }
+    >;
   };
   isDefault: boolean;
   createdAt: Date;
   updatedAt: Date;
 }
 
-// --- STORABLE TYPES ---
-// This type represents how Role data is stored in IndexedDB (e.g., dates as strings).
-type StorableRole = Omit<Role, 'createdAt' | 'updatedAt'> & { createdAt: string; updatedAt: string };
+export interface Setting {
+  key: string;
+  value: any;
+}
+
+class MCPAgentDB extends Dexie {
+  assistants!: Table<Assistant, string>;
+  settings!: Table<Setting, string>;
+
+  constructor() {
+    super("MCPAgentDB");
+    this.version(1).stores({
+      assistants: "&id", // Primary key 'id'
+      settings: "&key", // Primary key 'key'
+    });
+  }
+}
 
 class DBService {
   private static instance: DBService;
-  private dbPromise: Promise<IDBDatabase>;
+  private db: MCPAgentDB;
 
   private constructor() {
-    this.dbPromise = new Promise((resolve, reject) => {
-      const request = indexedDB.open('MCPAgentDB', 3); // Version incremented for schema safety
-
-      request.onerror = () => {
-        logger.error('IndexedDB error:', { error: request.error });
-        reject(request.error);
-      };
-
-      request.onsuccess = () => {
-        logger.debug('Database initialized successfully.');
-        resolve(request.result);
-      };
-
-      request.onupgradeneeded = (event) => {
-        logger.info('Database upgrade needed.');
-        const db = (event.target as IDBOpenDBRequest).result;
-        if (!db.objectStoreNames.contains('roles')) {
-          db.createObjectStore('roles', { keyPath: 'id' });
-        }
-        // Removed unused 'conversations' object store
-        if (!db.objectStoreNames.contains('settings')) {
-          db.createObjectStore('settings', { keyPath: 'key' });
-        }
-      };
-    });
+    this.db = new MCPAgentDB();
   }
 
   public static getInstance(): DBService {
@@ -64,118 +54,62 @@ class DBService {
     return DBService.instance;
   }
 
-  // --- PRIVATE HELPERS ---
-
-  private getObjectStore = async (storeName: string, mode: IDBTransactionMode): Promise<IDBObjectStore> => {
-    const db = await this.dbPromise;
-    return db.transaction(storeName, mode).objectStore(storeName);
-  };
-
-  private toStorableRole = (role: Role): StorableRole => ({
-    ...role,
-    createdAt: role.createdAt.toISOString(),
-    updatedAt: role.updatedAt.toISOString(),
-  });
-
-  private fromStorableRole = (role: StorableRole): Role => ({
-    ...role,
-    createdAt: new Date(role.createdAt),
-    updatedAt: new Date(role.updatedAt),
-  });
-
-  // --- PUBLIC API ---
-
-
   /**
-   * Create a new role. Fails if the role already exists.
+   * Create a new assistant. Fails if the assistant already exists.
    */
-  public async createRole(role: Role): Promise<void> {
-    const store = await this.getObjectStore('roles', 'readwrite');
-    const storableRole = this.toStorableRole(role);
-    return new Promise((resolve, reject) => {
-      const getReq = store.get(role.id);
-      getReq.onsuccess = () => {
-        if (getReq.result) {
-          reject(new Error('Role already exists'));
-        } else {
-          const addReq = store.add(storableRole);
-          addReq.onsuccess = () => resolve();
-          addReq.onerror = () => reject(addReq.error);
-        }
-      };
-      getReq.onerror = () => reject(getReq.error);
-    });
+  public async createAssistant(assistant: Assistant): Promise<void> {
+    try {
+      await this.db.assistants.add(assistant);
+    } catch (error) {
+      if (error instanceof Dexie.ConstraintError) {
+        throw new Error("Assistant already exists");
+      }
+      throw error;
+    }
   }
 
   /**
-   * Get a single role by id.
+   * Get a single assistant by id.
    */
-  public async getRole(id: string): Promise<Role | null> {
-    const store = await this.getObjectStore('roles', 'readonly');
-    return new Promise((resolve, reject) => {
-      const request = store.get(id);
-      request.onsuccess = () => {
-        if (request.result) {
-          resolve(this.fromStorableRole(request.result));
-        } else {
-          resolve(null);
-        }
-      };
-      request.onerror = () => reject(request.error);
-    });
+  public async getAssistant(id: string): Promise<Assistant | null> {
+    const assistant = await this.db.assistants.get(id);
+    return assistant || null;
   }
 
   /**
-   * Upsert a role (insert or update).
+   * Upsert an assistant (insert or update).
    */
-  public async upsertRole(role: Role): Promise<void> {
-    const store = await this.getObjectStore('roles', 'readwrite');
-    const storableRole = this.toStorableRole(role);
-    return new Promise((resolve, reject) => {
-      const putReq = store.put(storableRole);
-      putReq.onsuccess = () => resolve();
-      putReq.onerror = () => reject(putReq.error);
-    });
+  public async upsertAssistant(assistant: Assistant): Promise<void> {
+    await this.db.assistants.put(assistant);
   }
 
   /**
-   * Delete a role by id.
+   * Get all assistants.
    */
-
-  public async getRoles(): Promise<Role[]> {
-    const store = await this.getObjectStore('roles', 'readonly');
-    return new Promise((resolve, reject) => {
-      const request = store.getAll();
-      request.onsuccess = () => resolve(request.result.map(this.fromStorableRole));
-      request.onerror = () => reject(request.error);
-    });
+  public async getAssistants(): Promise<Assistant[]> {
+    return this.db.assistants.toArray();
   }
 
-  public async deleteRole(id: string): Promise<void> {
-    const store = await this.getObjectStore('roles', 'readwrite');
-    return new Promise((resolve, reject) => {
-      const request = store.delete(id);
-      request.onsuccess = () => resolve();
-      request.onerror = () => reject(request.error);
-    });
+  /**
+   * Delete an assistant by id.
+   */
+  public async deleteAssistant(id: string): Promise<void> {
+    await this.db.assistants.delete(id);
   }
 
+  /**
+   * Save a setting.
+   */
   public async saveSetting(key: string, value: any): Promise<void> {
-    const store = await this.getObjectStore('settings', 'readwrite');
-    return new Promise((resolve, reject) => {
-      const request = store.put({ key, value });
-      request.onsuccess = () => resolve();
-      request.onerror = () => reject(request.error);
-    });
+    await this.db.settings.put({ key, value });
   }
 
+  /**
+   * Get a setting by key.
+   */
   public async getSetting<T>(key: string): Promise<T | null> {
-    const store = await this.getObjectStore('settings', 'readonly');
-    return new Promise((resolve, reject) => {
-      const request = store.get(key);
-      request.onsuccess = () => resolve(request.result?.value as T ?? null);
-      request.onerror = () => reject(request.error);
-    });
+    const setting = await this.db.settings.get(key);
+    return setting ? (setting.value as T) : null;
   }
 }
 

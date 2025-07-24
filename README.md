@@ -7,6 +7,7 @@
 Tauri의 경량성과 React의 직관성을 결합한 차세대 데스크톱 앱입니다. Electron 대비 10배 빠른 성능으로 AI 에이전트를 만들고, 각자만의 개성과 능력을 부여해서 일상의 모든 작업을 자동화할 수 있습니다.
 
 ### 🚀 Tauri의 핵심 장점
+
 - **⚡ 초고속**: Electron 대비 10배 빠른 성능
 - **🪶 경량**: ~10MB vs Electron ~100MB+
 - **🔒 보안**: 기본적으로 더 안전한 샌드박스
@@ -92,21 +93,25 @@ crab-agent/
 애플리케이션을 실행한 후, 우측 상단의 'Settings' 버튼을 클릭하여 설정 모달을 엽니다. 'API Key Settings' 탭에서 각 AI 서비스 제공자(Groq, OpenAI, Anthropic, Gemini)의 API 키를 입력하고 저장할 수 있습니다.
 
 **1. Groq (무료, 빠른 추론)** - 추천! 🌟
+
 1. [Groq Console](https://console.groq.com/keys) 방문
 2. 계정 생성 후 "Create API Key" 클릭
 3. 발급받은 키를 앱 내 설정 모달에 입력
 
 **2. OpenAI (GPT-4o, GPT-4o-mini)**
+
 1. [OpenAI Platform](https://platform.openai.com/api-keys) 방문
 2. "Create new secret key" 클릭
 3. 발급받은 키를 앱 내 설정 모달에 입력
 
 **3. Anthropic (Claude-3.5-Sonnet)**
+
 1. [Anthropic Console](https://console.anthropic.com/) 방문
 2. API Keys 섹션에서 새 키 생성
 3. 발급받은 키를 앱 내 설정 모달에 입력
 
 **4. Gemini (Google Gemini)**
+
 1. [Google AI Studio](https://aistudio.google.com/app/apikey) 방문
 2. "Create API key in new project" 또는 기존 프로젝트에서 키 생성
 3. 발급받은 키를 앱 내 설정 모달에 입력

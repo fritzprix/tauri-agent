@@ -1,4 +1,3 @@
-
 # Client Example (javascript)
 
 ## Groq
@@ -22,30 +21,29 @@ getModels().then((models) => {
 ### Reasoning
 
 ```js
-import { Groq } from 'groq-sdk';
+import { Groq } from "groq-sdk";
 
 const groq = new Groq();
 
 const chatCompletion = await groq.chat.completions.create({
-  "messages": [
+  messages: [
     {
-      "role": "user",
-      "content": ""
-    }
+      role: "user",
+      content: "",
+    },
   ],
-  "model": "qwen/qwen3-32b",
-  "temperature": 0.6,
-  "max_completion_tokens": 4096,
-  "top_p": 0.95,
-  "stream": true,
-  "reasoning_effort": "default",
-  "stop": null
+  model: "qwen/qwen3-32b",
+  temperature: 0.6,
+  max_completion_tokens: 4096,
+  top_p: 0.95,
+  stream: true,
+  reasoning_effort: "default",
+  stop: null,
 });
 
 for await (const chunk of chatCompletion) {
-  process.stdout.write(chunk.choices[0]?.delta?.content || '');
+  process.stdout.write(chunk.choices[0]?.delta?.content || "");
 }
-
 ```
 
 ### Tool Use
@@ -116,7 +114,7 @@ def run_conversation(user_prompt):
             # Add the tool response to the conversation
             messages.append(
                 {
-                    "tool_call_id": tool_call.id, 
+                    "tool_call_id": tool_call.id,
                     "role": "tool", # Indicates this message is from tool use
                     "name": function_name,
                     "content": function_response,
@@ -143,33 +141,35 @@ import { OpenAI } from "openai";
 
 const openai = new OpenAI();
 
-const tools = [{
-    "type": "function",
-    "function": {
-        "name": "get_weather",
-        "description": "Get current temperature for a given location.",
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "location": {
-                    "type": "string",
-                    "description": "City and country e.g. Bogotá, Colombia"
-                }
-            },
-            "required": [
-                "location"
-            ],
-            "additionalProperties": false
+const tools = [
+  {
+    type: "function",
+    function: {
+      name: "get_weather",
+      description: "Get current temperature for a given location.",
+      parameters: {
+        type: "object",
+        properties: {
+          location: {
+            type: "string",
+            description: "City and country e.g. Bogotá, Colombia",
+          },
         },
-        "strict": true
-    }
-}];
+        required: ["location"],
+        additionalProperties: false,
+      },
+      strict: true,
+    },
+  },
+];
 
 const completion = await openai.chat.completions.create({
-    model: "gpt-4.1",
-    messages: [{ role: "user", content: "What is the weather like in Paris today?" }],
-    tools,
-    store: true,
+  model: "gpt-4.1",
+  messages: [
+    { role: "user", content: "What is the weather like in Paris today?" },
+  ],
+  tools,
+  store: true,
 });
 
 console.log(completion.choices[0].message.tool_calls);
@@ -186,15 +186,15 @@ const prompt = `
 Write a bash script that takes a matrix represented as a string with 
 format '[1,2],[3,4],[5,6]' and prints the transpose in the same format.
 `;
- 
+
 const completion = await openai.chat.completions.create({
   model: "o4-mini",
   reasoning_effort: "medium",
   messages: [
     {
-      role: "user", 
-      content: prompt
-    }
+      role: "user",
+      content: prompt,
+    },
   ],
   store: true,
 });
@@ -207,19 +207,17 @@ console.log(completion.choices[0].message.content);
 ### Streaming
 
 ```js
-import Anthropic from '@anthropic-ai/sdk';
+import Anthropic from "@anthropic-ai/sdk";
 
 const client = new Anthropic();
 
 const stream = await client.messages.create({
   max_tokens: 1024,
-  messages: [{ role: 'user', content: 'Hello, Claude' }],
-  model: 'claude-sonnet-4-20250514',
+  messages: [{ role: "user", content: "Hello, Claude" }],
+  model: "claude-sonnet-4-20250514",
   stream: true,
 });
 for await (const messageStreamEvent of stream) {
   console.log(messageStreamEvent.type);
 }
 ```
-
-

@@ -1,6 +1,3 @@
-
-
-
 export function Reflection() {
-    return null;
+  return null;
 }

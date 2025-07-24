@@ -1,11 +1,31 @@
-export interface MessageWithAttachments {
+import { Assistant as DbAssistant } from "../lib/db";
+import { MCPTool } from "../lib/tauri-mcp-client";
+
+export interface Message {
   id: string;
+  role: "user" | "assistant" | "system" | "tool";
   content: string;
-  role: 'user' | 'assistant' | 'system' | 'tool';
-  thinking?: string;
+  tool_calls?: ToolCall[];
+  tool_call_id?: string;
   isStreaming?: boolean;
-  attachments?: { name: string; content: string; }[];
+  thinking?: string;
 }
 
-export interface ChatMessage extends MessageWithAttachments {}
-export interface AgentMessage extends MessageWithAttachments {}
+export interface ToolCall {
+  id: string;
+  type: "function";
+  function: {
+    name: string;
+    arguments: string;
+  };
+}
+
+export interface StreamableMessage extends Message {}
+
+export interface Assistant extends DbAssistant {
+  localServices?: string[];
+}
+
+export interface Tool extends MCPTool {
+  isLocal?: boolean;
+}

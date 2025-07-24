@@ -1,4 +1,5 @@
 import React from "react";
+import { useLocalTools } from "../hooks/use-local-tools";
 import { useMCPServer } from "../hooks/use-mcp-server";
 
 interface ToolsModalProps {
@@ -7,7 +8,9 @@ interface ToolsModalProps {
 }
 
 const ToolsModal: React.FC<ToolsModalProps> = ({ isOpen, onClose }) => {
-  const { availableTools } = useMCPServer();
+  const { availableTools: mcpTools } = useMCPServer();
+  const { availableTools: localTools } = useLocalTools();
+  const availableTools = [...mcpTools, ...localTools];
   if (!isOpen) return null;
 
   return (
@@ -15,7 +18,7 @@ const ToolsModal: React.FC<ToolsModalProps> = ({ isOpen, onClose }) => {
       <div className="bg-gray-900 border border-green-400 rounded-lg p-6 max-w-2xl w-full mx-4 max-h-[80vh] overflow-hidden">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg font-bold text-green-400">
-            Available MCP Tools ({availableTools.length})
+            Available Tools ({availableTools.length})
           </h2>
           <button
             onClick={onClose}
@@ -33,9 +36,14 @@ const ToolsModal: React.FC<ToolsModalProps> = ({ isOpen, onClose }) => {
           ) : (
             <div className="space-y-3">
               {availableTools.map((tool, index) => (
-                <div key={index} className="bg-gray-800 border border-gray-700 rounded p-3">
+                <div
+                  key={index}
+                  className="bg-gray-800 border border-gray-700 rounded p-3"
+                >
                   <div className="flex items-center gap-2 mb-2">
-                    <span className="text-blue-400 font-mono text-sm">🔧 {tool.name}</span>
+                    <span className="text-blue-400 font-mono text-sm">
+                      🔧 {tool.name}
+                    </span>
                   </div>
                   {tool.description && (
                     <p className="text-gray-300 text-sm">{tool.description}</p>
