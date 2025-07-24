@@ -1,4 +1,4 @@
-import React from 'react';
+import React from "react";
 
 interface FileAttachmentProps {
   files: { name: string; content: string }[];
@@ -9,12 +9,31 @@ interface FileAttachmentProps {
   compact?: boolean;
 }
 
-export default function FileAttachment({ 
-  files, 
-  onRemove, 
+export default function FileAttachment({
+  files,
+  onRemove,
   onAdd,
-  allowedExtensions = ['txt', 'md', 'json', 'js', 'ts', 'tsx', 'jsx', 'py', 'java', 'cpp', 'c', 'h', 'css', 'html', 'xml', 'yaml', 'yml', 'csv'],
-  compact = false
+  allowedExtensions = [
+    "txt",
+    "md",
+    "json",
+    "js",
+    "ts",
+    "tsx",
+    "jsx",
+    "py",
+    "java",
+    "cpp",
+    "c",
+    "h",
+    "css",
+    "html",
+    "xml",
+    "yaml",
+    "yml",
+    "csv",
+  ],
+  compact = false,
 }: FileAttachmentProps) {
   const fileInputRef = React.useRef<HTMLInputElement>(null);
 
@@ -30,11 +49,11 @@ export default function FileAttachment({
           ref={fileInputRef}
           type="file"
           multiple
-          accept={allowedExtensions.map(ext => `.${ext}`).join(',')}
+          accept={allowedExtensions.map((ext) => `.${ext}`).join(",")}
           onChange={onAdd}
           className="hidden"
         />
-        
+
         {/* Attach Files Button */}
         <button
           type="button"
@@ -47,9 +66,7 @@ export default function FileAttachment({
 
         {/* File Count Indicator */}
         {files.length > 0 && (
-          <span className="text-xs text-gray-400">
-            {files.length}
-          </span>
+          <span className="text-xs text-gray-400">{files.length}</span>
         )}
       </div>
     );
@@ -62,11 +79,11 @@ export default function FileAttachment({
         ref={fileInputRef}
         type="file"
         multiple
-        accept={allowedExtensions.map(ext => `.${ext}`).join(',')}
+        accept={allowedExtensions.map((ext) => `.${ext}`).join(",")}
         onChange={onAdd}
         className="hidden"
       />
-      
+
       {/* Attach Files Button */}
       <button
         type="button"
@@ -83,8 +100,13 @@ export default function FileAttachment({
           <div className="text-xs text-gray-500 mb-2">📎 Attached Files:</div>
           <div className="space-y-1">
             {files.map((file, index) => (
-              <div key={index} className="flex items-center justify-between bg-gray-900 px-2 py-1 rounded border border-gray-700">
-                <span className="text-xs text-green-400 truncate flex-1">{file.name}</span>
+              <div
+                key={index}
+                className="flex items-center justify-between bg-gray-900 px-2 py-1 rounded border border-gray-700"
+              >
+                <span className="text-xs text-green-400 truncate flex-1">
+                  {file.name}
+                </span>
                 <button
                   type="button"
                   onClick={() => onRemove(index)}

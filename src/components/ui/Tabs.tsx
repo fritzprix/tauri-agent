@@ -1,4 +1,4 @@
-import React from 'react';
+import React from "react";
 
 interface TabsProps {
   children: React.ReactNode;
@@ -24,8 +24,13 @@ interface TabsContentProps {
   activeValue?: string;
 }
 
-export function Tabs({ children, defaultValue, value, onValueChange }: TabsProps) {
-  const [activeTab, setActiveTab] = React.useState(defaultValue || '');
+export function Tabs({
+  children,
+  defaultValue,
+  value,
+  onValueChange,
+}: TabsProps) {
+  const [activeTab, setActiveTab] = React.useState(defaultValue || "");
 
   const currentValue = value !== undefined ? value : activeTab;
 
@@ -38,11 +43,11 @@ export function Tabs({ children, defaultValue, value, onValueChange }: TabsProps
 
   return (
     <div className="w-full">
-      {React.Children.map(children, child => {
+      {React.Children.map(children, (child) => {
         if (React.isValidElement(child)) {
-          return React.cloneElement(child, { 
-            activeValue: currentValue, 
-            onTabChange: handleTabChange 
+          return React.cloneElement(child, {
+            activeValue: currentValue,
+            onTabChange: handleTabChange,
           } as any);
         }
         return child;
@@ -51,12 +56,8 @@ export function Tabs({ children, defaultValue, value, onValueChange }: TabsProps
   );
 }
 
-export function TabsList({ children, className = '' }: TabsListProps) {
-  return (
-    <div className={`flex gap-3 ${className}`}>
-      {children}
-    </div>
-  );
+export function TabsList({ children, className = "" }: TabsListProps) {
+  return <div className={`flex gap-3 ${className}`}>{children}</div>;
 }
 
 export function TabsTrigger({ children, onClick, isActive }: TabsTriggerProps) {
@@ -64,7 +65,7 @@ export function TabsTrigger({ children, onClick, isActive }: TabsTriggerProps) {
     <button
       onClick={onClick}
       className={`px-2 py-1 text-sm transition-colors ${
-        isActive ? 'text-green-400' : 'text-gray-500 hover:text-gray-300'
+        isActive ? "text-green-400" : "text-gray-500 hover:text-gray-300"
       }`}
     >
       {children}
@@ -72,8 +73,12 @@ export function TabsTrigger({ children, onClick, isActive }: TabsTriggerProps) {
   );
 }
 
-export function TabsContent({ value, children, activeValue }: TabsContentProps) {
+export function TabsContent({
+  value,
+  children,
+  activeValue,
+}: TabsContentProps) {
   if (value !== activeValue) return null;
-  
+
   return <div>{children}</div>;
 }

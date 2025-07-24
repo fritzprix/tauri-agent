@@ -1,10 +1,11 @@
 export interface MessageWithAttachments {
+  currentAssistantName?: string;
   id: string;
   content: string;
-  role: 'user' | 'assistant' | 'system' | 'tool';
+  role: "user" | "assistant" | "system" | "tool";
   thinking?: string;
   isStreaming?: boolean;
-  attachments?: { name: string; content: string; }[];
+  attachments?: { name: string; content: string }[];
 }
 
 export interface ChatMessage extends MessageWithAttachments {}

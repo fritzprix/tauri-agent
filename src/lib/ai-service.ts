@@ -2,12 +2,7 @@ import { createId } from "@paralleldrive/cuid2";
 import Groq from "groq-sdk";
 import OpenAI from "openai";
 import Anthropic from "@anthropic-ai/sdk";
-import {
-  FunctionDeclaration,
-  GoogleGenAI,
-  Content,
-  Type,
-} from "@google/genai";
+import { FunctionDeclaration, GoogleGenAI, Content, Type } from "@google/genai";
 import { ChatCompletionTool as GroqChatCompletionTool } from "groq-sdk/resources/chat/completions.mjs";
 import { ChatCompletionTool as OpenAIChatCompletionTool } from "openai/resources/chat/completions.mjs";
 import {
@@ -60,7 +55,7 @@ export class AIServiceError extends Error {
     message: string,
     public provider: AIServiceProvider,
     public statusCode?: number,
-    public originalError?: Error
+    public originalError?: Error,
   ) {
     super(message);
     this.name = "AIServiceError";
@@ -115,7 +110,7 @@ class MessageValidator {
       throw new Error(
         `Invalid tool arguments: ${
           error instanceof Error ? error.message : "Unknown error"
-        }`
+        }`,
       );
     }
   }
@@ -131,72 +126,76 @@ type ProviderToolType =
 type ProviderToolsType = ProviderToolType[];
 
 // Helper function to convert JSON schema types to Gemini types
-function convertPropertiesToGeminiTypes(properties: Record<string, unknown>): any {
-  if (!properties || typeof properties !== 'object') {
+function convertPropertiesToGeminiTypes(
+  properties: Record<string, unknown>,
+): any {
+  if (!properties || typeof properties !== "object") {
     return {};
   }
-  
+
   const convertedProperties: any = {};
-  
+
   for (const [key, value] of Object.entries(properties)) {
-    if (!value || typeof value !== 'object') {
+    if (!value || typeof value !== "object") {
       convertedProperties[key] = { type: Type.STRING };
       continue;
     }
-    
+
     const prop = value as any;
     const propType = prop.type;
-    
+
     switch (propType) {
-      case 'string':
+      case "string":
         convertedProperties[key] = { type: Type.STRING };
         break;
-      case 'number':
-      case 'integer':
+      case "number":
+      case "integer":
         convertedProperties[key] = { type: Type.NUMBER };
         break;
-      case 'boolean':
+      case "boolean":
         convertedProperties[key] = { type: Type.BOOLEAN };
         break;
-      case 'array':
-        convertedProperties[key] = { 
+      case "array":
+        convertedProperties[key] = {
           type: Type.ARRAY,
-          items: prop.items ? convertSinglePropertyToGeminiType(prop.items) : { type: Type.STRING }
+          items: prop.items
+            ? convertSinglePropertyToGeminiType(prop.items)
+            : { type: Type.STRING },
         };
         break;
-      case 'object':
+      case "object":
         convertedProperties[key] = { type: Type.OBJECT };
         break;
       default:
         convertedProperties[key] = { type: Type.STRING };
         break;
     }
-    
-    if (prop.description && typeof prop.description === 'string') {
+
+    if (prop.description && typeof prop.description === "string") {
       convertedProperties[key].description = prop.description;
     }
   }
-  
+
   return convertedProperties;
 }
 
 // Helper function to convert a single property type
 function convertSinglePropertyToGeminiType(prop: any): any {
-  if (!prop || typeof prop !== 'object') {
+  if (!prop || typeof prop !== "object") {
     return { type: Type.STRING };
   }
-  
+
   switch (prop.type) {
-    case 'string':
+    case "string":
       return { type: Type.STRING };
-    case 'number':
-    case 'integer':
+    case "number":
+    case "integer":
       return { type: Type.NUMBER };
-    case 'boolean':
+    case "boolean":
       return { type: Type.BOOLEAN };
-    case 'array':
+    case "array":
       return { type: Type.ARRAY };
-    case 'object':
+    case "object":
       return { type: Type.OBJECT };
     default:
       return { type: Type.STRING };
@@ -207,27 +206,30 @@ function convertSinglePropertyToGeminiType(prop: any): any {
 // function sanitizeFunctionName(name: string): string {
 //   // Gemini requires: start with letter/underscore, alphanumeric + _ . -, max 64 chars
 //   let sanitized = name
-//     .replace(/:/g, '_') // Replace colons specifically 
+//     .replace(/:/g, '_') // Replace colons specifically
 //     .replace(/[^a-zA-Z0-9_.-]/g, '_') // Replace other invalid chars with underscore
 //     .substring(0, 64); // Max 64 chars
-  
+
 //   // Ensure it starts with letter or underscore
 //   if (!/^[a-zA-Z_]/.test(sanitized)) {
 //     sanitized = '_' + sanitized.substring(0, 63);
 //   }
-  
+
 //   return sanitized;
 // }
 
 // Updated tool conversion for Gemini - use parameters with Type enums
-function convertMCPToolToProviderFormat(mcpTool: MCPTool, provider: AIServiceProvider): ProviderToolType {
+function convertMCPToolToProviderFormat(
+  mcpTool: MCPTool,
+  provider: AIServiceProvider,
+): ProviderToolType {
   MessageValidator.validateTool(mcpTool);
-  
+
   const properties = mcpTool.input_schema.properties;
   const required = mcpTool.input_schema.required || [];
-  
+
   const commonParameters = {
-    type: 'object' as const,
+    type: "object" as const,
     properties: properties,
     required: required,
   };
@@ -264,23 +266,31 @@ function convertMCPToolToProviderFormat(mcpTool: MCPTool, provider: AIServicePro
         description: mcpTool.description,
         parameters: {
           type: Type.OBJECT,
-          properties: convertPropertiesToGeminiTypes(mcpTool.input_schema.properties),
+          properties: convertPropertiesToGeminiTypes(
+            mcpTool.input_schema.properties,
+          ),
           required: mcpTool.input_schema.required || [],
         },
       };
     case AIServiceProvider.Empty:
       throw new AIServiceError(
         `Tool conversion not supported for Empty AIServiceProvider`,
-        AIServiceProvider.Empty
+        AIServiceProvider.Empty,
       );
   }
 }
 
-export function convertMCPToolsToProviderTools(mcpTools: MCPTool[], provider: AIServiceProvider): ProviderToolsType {
+export function convertMCPToolsToProviderTools(
+  mcpTools: MCPTool[],
+  provider: AIServiceProvider,
+): ProviderToolsType {
   if (provider === AIServiceProvider.Gemini) {
-    return mcpTools.map(tool => convertMCPToolToProviderFormat(tool, provider) as FunctionDeclaration);
+    return mcpTools.map(
+      (tool) =>
+        convertMCPToolToProviderFormat(tool, provider) as FunctionDeclaration,
+    );
   }
-  return mcpTools.map(tool => convertMCPToolToProviderFormat(tool, provider));
+  return mcpTools.map((tool) => convertMCPToolToProviderFormat(tool, provider));
 }
 
 // --- Enhanced Service Interface ---
@@ -293,7 +303,7 @@ export interface IAIService {
       systemPrompt?: string;
       availableTools?: MCPTool[];
       config?: AIServiceConfig;
-    }
+    },
   ): AsyncGenerator<string, void, unknown>;
 
   dispose(): void;
@@ -310,7 +320,10 @@ abstract class BaseAIService implements IAIService {
     temperature: 0.7,
   };
 
-  constructor(protected apiKey: string, protected config?: AIServiceConfig) {
+  constructor(
+    protected apiKey: string,
+    protected config?: AIServiceConfig,
+  ) {
     this.validateApiKey(apiKey);
     this.defaultConfig = { ...this.defaultConfig, ...config };
   }
@@ -325,7 +338,7 @@ abstract class BaseAIService implements IAIService {
     if (!Array.isArray(messages) || messages.length === 0) {
       throw new AIServiceError(
         "Messages array cannot be empty",
-        this.getProvider()
+        this.getProvider(),
       );
     }
     messages.forEach(MessageValidator.validateMessage);
@@ -333,7 +346,7 @@ abstract class BaseAIService implements IAIService {
 
   protected async withRetry<T>(
     operation: () => Promise<T>,
-    maxRetries: number = this.defaultConfig.maxRetries!
+    maxRetries: number = this.defaultConfig.maxRetries!,
   ): Promise<T> {
     let lastError: Error;
 
@@ -350,7 +363,7 @@ abstract class BaseAIService implements IAIService {
             }`,
             this.getProvider(),
             undefined,
-            lastError
+            lastError,
           );
         }
 
@@ -365,7 +378,7 @@ abstract class BaseAIService implements IAIService {
 
   protected async withTimeout<T>(
     promise: Promise<T>,
-    timeoutMs: number
+    timeoutMs: number,
   ): Promise<T> {
     const timeoutPromise = new Promise<never>((_, reject) => {
       setTimeout(() => reject(new Error("Operation timed out")), timeoutMs);
@@ -381,7 +394,7 @@ abstract class BaseAIService implements IAIService {
       systemPrompt?: string;
       availableTools?: MCPTool[];
       config?: AIServiceConfig;
-    }
+    },
   ): AsyncGenerator<string, void, unknown>;
 
   abstract getProvider(): AIServiceProvider;
@@ -404,11 +417,11 @@ export class EmptyAIService extends BaseAIService {
       systemPrompt?: string;
       availableTools?: MCPTool[];
       config?: AIServiceConfig;
-    }
+    },
   ): AsyncGenerator<string, void, unknown> {
     throw new AIServiceError(
       "EmptyAIService does not support streaming chat",
-      AIServiceProvider.Empty
+      AIServiceProvider.Empty,
     );
     // Yield nothing, this is an empty service
   }
@@ -442,7 +455,7 @@ export class GroqService extends BaseAIService {
       systemPrompt?: string;
       availableTools?: MCPTool[];
       config?: AIServiceConfig;
-    } = {}
+    } = {},
   ): AsyncGenerator<string, void, unknown> {
     this.validateMessages(messages);
     logger.info("tools : ", { availableTools: options.availableTools });
@@ -452,7 +465,7 @@ export class GroqService extends BaseAIService {
     try {
       const groqMessages = this.convertToGroqMessages(
         messages,
-        options.systemPrompt
+        options.systemPrompt,
       );
 
       const chatCompletion = await this.withRetry(() =>
@@ -467,11 +480,11 @@ export class GroqService extends BaseAIService {
           tools: options.availableTools
             ? (convertMCPToolsToProviderTools(
                 options.availableTools,
-                AIServiceProvider.Groq
+                AIServiceProvider.Groq,
               ) as GroqChatCompletionTool[])
             : undefined,
           tool_choice: options.availableTools ? "auto" : undefined,
-        })
+        }),
       );
 
       for await (const chunk of chatCompletion) {
@@ -495,14 +508,14 @@ export class GroqService extends BaseAIService {
         }`,
         AIServiceProvider.Groq,
         undefined,
-        error instanceof Error ? error : undefined
+        error instanceof Error ? error : undefined,
       );
     }
   }
 
   private convertToGroqMessages(
     messages: StreamableMessage[],
-    systemPrompt?: string
+    systemPrompt?: string,
   ): Groq.Chat.Completions.ChatCompletionMessageParam[] {
     const groqMessages: Groq.Chat.Completions.ChatCompletionMessageParam[] = [];
 
@@ -536,7 +549,9 @@ export class GroqService extends BaseAIService {
             content: m.content,
           });
         } else {
-          logger.warn(`Tool message missing tool_call_id: ${JSON.stringify(m)}`);
+          logger.warn(
+            `Tool message missing tool_call_id: ${JSON.stringify(m)}`,
+          );
         }
       }
     }
@@ -570,24 +585,24 @@ export class OpenAIService extends BaseAIService {
       systemPrompt?: string;
       availableTools?: MCPTool[];
       config?: AIServiceConfig;
-    } = {}
+    } = {},
   ): AsyncGenerator<string, void, unknown> {
     this.validateMessages(messages);
 
     const config = { ...this.defaultConfig, ...options.config };
-    if(options.availableTools) {
-    logger.info(" tool calls: ", {
-      tools: convertMCPToolsToProviderTools(
-                options?.availableTools,
-                AIServiceProvider.OpenAI
-            )
-    });
-  }
+    if (options.availableTools) {
+      logger.info(" tool calls: ", {
+        tools: convertMCPToolsToProviderTools(
+          options?.availableTools,
+          AIServiceProvider.OpenAI,
+        ),
+      });
+    }
 
     try {
       const openaiMessages = this.convertToOpenAIMessages(
         messages,
-        options.systemPrompt
+        options.systemPrompt,
       );
       logger.info("openai call : ", { openaiMessages });
 
@@ -600,11 +615,11 @@ export class OpenAIService extends BaseAIService {
           tools: options.availableTools
             ? (convertMCPToolsToProviderTools(
                 options.availableTools,
-                AIServiceProvider.OpenAI
-            ) as OpenAIChatCompletionTool[])
+                AIServiceProvider.OpenAI,
+              ) as OpenAIChatCompletionTool[])
             : undefined,
           tool_choice: options.availableTools ? "auto" : undefined,
-        })
+        }),
       );
 
       for await (const chunk of completion) {
@@ -625,16 +640,17 @@ export class OpenAIService extends BaseAIService {
         }`,
         AIServiceProvider.OpenAI,
         undefined,
-        error instanceof Error ? error : undefined
+        error instanceof Error ? error : undefined,
       );
     }
   }
 
   private convertToOpenAIMessages(
     messages: StreamableMessage[],
-    systemPrompt?: string
+    systemPrompt?: string,
   ): OpenAI.Chat.Completions.ChatCompletionMessageParam[] {
-    const openaiMessages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [];
+    const openaiMessages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] =
+      [];
 
     if (systemPrompt) {
       openaiMessages.push({ role: "system", content: systemPrompt });
@@ -661,7 +677,9 @@ export class OpenAIService extends BaseAIService {
             content: m.content,
           });
         } else {
-          logger.warn(`Tool message missing tool_call_id: ${JSON.stringify(m)}`);
+          logger.warn(
+            `Tool message missing tool_call_id: ${JSON.stringify(m)}`,
+          );
         }
       }
     }
@@ -692,7 +710,7 @@ export class AnthropicService extends BaseAIService {
       systemPrompt?: string;
       availableTools?: MCPTool[];
       config?: AIServiceConfig;
-    } = {}
+    } = {},
   ): AsyncGenerator<string, void, unknown> {
     this.validateMessages(messages);
 
@@ -718,10 +736,10 @@ export class AnthropicService extends BaseAIService {
           tools: options.availableTools
             ? (convertMCPToolsToProviderTools(
                 options.availableTools,
-                AIServiceProvider.Anthropic
+                AIServiceProvider.Anthropic,
               ) as AnthropicTool[])
             : undefined,
-        })
+        }),
       );
 
       for await (const chunk of completion) {
@@ -749,13 +767,13 @@ export class AnthropicService extends BaseAIService {
         }`,
         AIServiceProvider.Anthropic,
         undefined,
-        error instanceof Error ? error : undefined
+        error instanceof Error ? error : undefined,
       );
     }
   }
 
   private convertToAnthropicMessages(
-    messages: StreamableMessage[]
+    messages: StreamableMessage[],
   ): AnthropicMessageParam[] {
     const anthropicMessages: AnthropicMessageParam[] = [];
 
@@ -776,7 +794,7 @@ export class AnthropicService extends BaseAIService {
               id: tc.id,
               name: tc.function.name,
               input: MessageValidator.sanitizeToolArguments(
-                tc.function.arguments
+                tc.function.arguments,
               ),
             })),
           });
@@ -839,7 +857,7 @@ export class GeminiService extends BaseAIService {
       systemPrompt?: string;
       availableTools?: MCPTool[];
       config?: AIServiceConfig;
-    } = {}
+    } = {},
   ): AsyncGenerator<string, void, unknown> {
     this.validateMessages(messages);
 
@@ -848,18 +866,23 @@ export class GeminiService extends BaseAIService {
     try {
       const geminiMessages = this.convertToGeminiMessages(messages);
       const tools = options.availableTools
-        ? [{ functionDeclarations: convertMCPToolsToProviderTools(
-            options.availableTools,
-            AIServiceProvider.Gemini
-          ) as FunctionDeclaration[] }]
+        ? [
+            {
+              functionDeclarations: convertMCPToolsToProviderTools(
+                options.availableTools,
+                AIServiceProvider.Gemini,
+              ) as FunctionDeclaration[],
+            },
+          ]
         : undefined;
 
-      const model = options.modelName || config.defaultModel || "gemini-1.5-pro";
+      const model =
+        options.modelName || config.defaultModel || "gemini-1.5-pro";
       logger.info("gemini call : ", { model, config });
 
       // Fixed API call structure based on your example
       const geminiConfig: any = {
-        responseMimeType: 'text/plain',
+        responseMimeType: "text/plain",
       };
 
       if (tools) {
@@ -911,14 +934,14 @@ export class GeminiService extends BaseAIService {
     } catch (error) {
       logger.error("Gemini API Error Details:", {
         error: error,
-        message: error instanceof Error ? error.message : 'Unknown error',
+        message: error instanceof Error ? error.message : "Unknown error",
         stack: error instanceof Error ? error.stack : undefined,
         requestData: {
           model: options.modelName || config.defaultModel || "gemini-1.5-pro",
           messagesCount: messages.length,
           hasTools: !!options.availableTools?.length,
-          systemPrompt: !!options.systemPrompt
-        }
+          systemPrompt: !!options.systemPrompt,
+        },
       });
       throw new AIServiceError(
         `Gemini streaming failed: ${
@@ -926,7 +949,7 @@ export class GeminiService extends BaseAIService {
         }`,
         AIServiceProvider.Gemini,
         undefined,
-        error instanceof Error ? error : undefined
+        error instanceof Error ? error : undefined,
       );
     }
   }
@@ -951,7 +974,9 @@ export class GeminiService extends BaseAIService {
             parts: m.tool_calls.map((tc) => ({
               functionCall: {
                 name: tc.function.name,
-                args: MessageValidator.sanitizeToolArguments(tc.function.arguments),
+                args: MessageValidator.sanitizeToolArguments(
+                  tc.function.arguments,
+                ),
               },
             })),
           });
@@ -968,7 +993,7 @@ export class GeminiService extends BaseAIService {
           const prevMessage = messages[j];
           if (prevMessage.role === "assistant" && prevMessage.tool_calls) {
             const toolCall = prevMessage.tool_calls.find(
-              (tc) => tc.id === m.tool_call_id
+              (tc) => tc.id === m.tool_call_id,
             );
             if (toolCall) {
               functionName = toolCall.function.name;
@@ -990,7 +1015,9 @@ export class GeminiService extends BaseAIService {
             ],
           });
         } else {
-          logger.warn(`Could not find function name for tool message with tool_call_id: ${m.tool_call_id}`);
+          logger.warn(
+            `Could not find function name for tool message with tool_call_id: ${m.tool_call_id}`,
+          );
           // Optionally, handle this error more robustly or skip the message
         }
       }
@@ -1019,7 +1046,7 @@ export class AIServiceFactory {
   static getService(
     provider: AIServiceProvider,
     apiKey: string,
-    config?: AIServiceConfig
+    config?: AIServiceConfig,
   ): IAIService {
     const instanceKey = `${provider}:${apiKey}`;
     const now = Date.now();
@@ -1055,14 +1082,14 @@ export class AIServiceFactory {
           break;
         default:
           logger.warn(
-            `Unknown AI service provider: ${provider}. Returning EmptyAIService.`
+            `Unknown AI service provider: ${provider}. Returning EmptyAIService.`,
           );
           service = new EmptyAIService();
           break;
       }
     } catch (e) {
       logger.error(
-        `Failed to create service for provider ${provider} with error: ${e}. Returning EmptyAIService.`
+        `Failed to create service for provider ${provider} with error: ${e}. Returning EmptyAIService.`,
       );
       service = new EmptyAIService();
     }

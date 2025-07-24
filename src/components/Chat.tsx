@@ -1,11 +1,11 @@
 import { createId } from "@paralleldrive/cuid2";
 import React, { useEffect, useRef, useState } from "react";
-import { useRoleContext } from "../context/RoleContext";
+import { useAssistantContext } from "../context/AssistantContext";
 import { useChatContext } from "../hooks/use-chat";
 import { useMCPServer } from "../hooks/use-mcp-server";
 import { StreamableMessage } from "../lib/ai-service";
 import { getLogger } from "../lib/logger";
-import RoleManager from "./RoleManager";
+import AssistantManager from "./AssistantManager";
 import { Button, CompactModelPicker, FileAttachment, Input } from "./ui";
 import ToolsModal from "./ToolsModal";
 import MessageBubble from "./MessageBubble";
@@ -18,34 +18,42 @@ interface ChatProps {
 }
 
 export default function Chat({ children }: ChatProps) {
-  const [mode, setMode] = useState<'chat' | 'agent'>('agent');
-  const [showRoleManager, setShowRoleManager] = useState(false);
-  const { currentRole } = useRoleContext();
+  const [mode, setMode] = useState<"chat" | "agent">("agent");
+  const [showAssistantManager, setShowAssistantManager] = useState(false);
+  const { currentAssistant } = useAssistantContext();
   const [showToolsDetail, setShowToolsDetail] = useState(false);
-  const [attachedFiles, setAttachedFiles] = useState<{ name: string; content: string; }[]>([]);
+  const [attachedFiles, setAttachedFiles] = useState<
+    { name: string; content: string }[]
+  >([]);
   const { availableTools } = useMCPServer();
   const [input, setInput] = useState("");
   const { submit, isLoading, messages } = useChatContext();
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
   const handleAgentInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setInput(e.target.value);
   };
 
-  const handleFileAttachment = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileAttachment = async (
+    e: React.ChangeEvent<HTMLInputElement>,
+  ) => {
     const files = e.target.files;
     if (!files) return;
 
-    const newAttachedFiles: { name: string; content: string; }[] = [];
+    const newAttachedFiles: { name: string; content: string }[] = [];
 
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
-      if (!file.type.startsWith('text/') && !file.name.match(/\.(txt|md|json|js|ts|tsx|jsx|py|java|cpp|c|h|css|html|xml|yaml|yml|csv)$/i)) {
+      if (
+        !file.type.startsWith("text/") &&
+        !file.name.match(
+          /\.(txt|md|json|js|ts|tsx|jsx|py|java|cpp|c|h|css|html|xml|yaml|yml|csv)$/i,
+        )
+      ) {
         alert(`File "${file.name}" is not a supported text file format.`);
         continue;
       }
@@ -64,24 +72,24 @@ export default function Chat({ children }: ChatProps) {
       }
     }
 
-    setAttachedFiles(prev => [...prev, ...newAttachedFiles]);
-    e.target.value = '';
+    setAttachedFiles((prev) => [...prev, ...newAttachedFiles]);
+    e.target.value = "";
   };
 
   const removeAttachedFile = (index: number) => {
-    setAttachedFiles(prev => prev.filter((_, i) => i !== index));
+    setAttachedFiles((prev) => prev.filter((_, i) => i !== index));
   };
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
-    logger.info("submit!!", currentRole);
+    logger.info("submit!!", currentAssistant);
     e.preventDefault();
     if (!input.trim() && attachedFiles.length === 0) return;
-    if (!currentRole) return;
+    if (!currentAssistant) return;
 
     let messageContent = input.trim();
     if (attachedFiles.length > 0) {
-      messageContent += '\n\n--- Attached Files ---\n';
-      attachedFiles.forEach(file => {
+      messageContent += "\n\n--- Attached Files ---\n";
+      attachedFiles.forEach((file) => {
         messageContent += `\n[File: ${file.name}]\n${file.content}\n`;
       });
     }
@@ -89,16 +97,16 @@ export default function Chat({ children }: ChatProps) {
     const userMessage: StreamableMessage = {
       id: createId(),
       content: messageContent,
-      role: 'user',
+      role: "user",
     };
 
-    setInput('');
+    setInput("");
     setAttachedFiles([]);
 
     try {
       await submit([userMessage]);
     } catch (err) {
-      logger.error('Error submitting message:', err);
+      logger.error("Error submitting message:", err);
     }
   };
 
@@ -114,10 +122,12 @@ export default function Chat({ children }: ChatProps) {
           </div>
           <div className="text-sm text-gray-500">mcp-agent@terminal ~ %</div>
         </div>
-        {currentRole && (
+        {currentAssistant && (
           <div className="flex items-center gap-2">
-            <span className="text-xs text-gray-400">Role:</span>
-            <span className="text-sm text-green-400">{currentRole.name}</span>
+            <span className="text-xs text-gray-400">Assistant:</span>
+            <span className="text-sm text-green-400">
+              {currentAssistant.name}
+            </span>
           </div>
         )}
       </div>
@@ -127,23 +137,23 @@ export default function Chat({ children }: ChatProps) {
         <div className="flex justify-between items-center">
           <div className="flex gap-2">
             <button
-              className={`text-xs px-2 py-1 rounded ${mode === 'chat' ? 'bg-green-700 text-white' : 'bg-gray-800 text-green-400'}`}
-              onClick={() => setMode('chat')}
+              className={`text-xs px-2 py-1 rounded ${mode === "chat" ? "bg-green-700 text-white" : "bg-gray-800 text-green-400"}`}
+              onClick={() => setMode("chat")}
             >
               [chat]
             </button>
             <button
-              className={`text-xs px-2 py-1 rounded ${mode === 'agent' ? 'bg-green-700 text-white' : 'bg-gray-800 text-green-400'}`}
-              onClick={() => setMode('agent')}
+              className={`text-xs px-2 py-1 rounded ${mode === "agent" ? "bg-green-700 text-white" : "bg-gray-800 text-green-400"}`}
+              onClick={() => setMode("agent")}
             >
               [agent]
             </button>
           </div>
           <button
             className="text-xs px-2 py-1 rounded bg-gray-800 text-green-400 hover:bg-green-700 hover:text-white"
-            onClick={() => setShowRoleManager(true)}
+            onClick={() => setShowAssistantManager(true)}
           >
-            [manage-roles]
+            [manage-assistants]
           </button>
         </div>
       </div>
@@ -156,13 +166,19 @@ export default function Chat({ children }: ChatProps) {
       {/* Messages Area - Fills space between model picker and bottom UI */}
       <div className="flex-1 flex flex-col min-h-0">
         <div className="flex-1 p-4 overflow-y-auto flex flex-col gap-6 terminal-scrollbar">
-          {messages.map(m => (
-            <MessageBubble key={m.id} message={m} currentRoleName={currentRole?.name} />
+          {messages.map((m) => (
+            <MessageBubble
+              key={m.id}
+              message={m}
+              currentAssistantName={currentAssistant?.name}
+            />
           ))}
           {isLoading && (
             <div className="flex justify-start">
               <div className="bg-gray-800/50 text-gray-200 rounded px-3 py-2">
-                <div className="text-xs text-gray-400 mb-1">Agent ({currentRole?.name})</div>
+                <div className="text-xs text-gray-400 mb-1">
+                  Agent ({currentAssistant?.name})
+                </div>
                 <div className="text-sm">thinking...</div>
               </div>
             </div>
@@ -176,8 +192,10 @@ export default function Chat({ children }: ChatProps) {
         {/* Status bar */}
         <div className="bg-gray-900/90 px-4 py-2 border-t border-gray-700 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <span className="text-xs text-gray-400">Role:</span>
-            <span className="text-xs text-green-400">{currentRole?.name || 'None'}</span>
+            <span className="text-xs text-gray-400">Assistant:</span>
+            <span className="text-xs text-green-400">
+              {currentAssistant?.name || "None"}
+            </span>
           </div>
 
           <div className="flex items-center gap-2">
@@ -197,8 +215,13 @@ export default function Chat({ children }: ChatProps) {
             <div className="text-xs text-gray-500 mb-2">📎 Attached Files:</div>
             <div className="flex flex-wrap gap-2">
               {attachedFiles.map((file, index) => (
-                <div key={index} className="flex items-center bg-gray-900 px-2 py-1 rounded border border-gray-700">
-                  <span className="text-xs text-green-400 truncate max-w-[150px]">{file.name}</span>
+                <div
+                  key={index}
+                  className="flex items-center bg-gray-900 px-2 py-1 rounded border border-gray-700"
+                >
+                  <span className="text-xs text-green-400 truncate max-w-[150px]">
+                    {file.name}
+                  </span>
                   <button
                     type="button"
                     onClick={() => removeAttachedFile(index)}
@@ -251,8 +274,8 @@ export default function Chat({ children }: ChatProps) {
       </div>
 
       {/* Modals */}
-      {showRoleManager && (
-        <RoleManager onClose={() => setShowRoleManager(false)} />
+      {showAssistantManager && (
+        <AssistantManager onClose={() => setShowAssistantManager(false)} />
       )}
       <ToolsModal
         isOpen={showToolsDetail}

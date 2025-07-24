@@ -22,7 +22,10 @@ function App() {
           </ChatContextProvider>
         </ModelOptionsProvider>
       </main>
-      <SettingsModal isOpen={isSettingsModalOpen} onClose={() => setIsSettingsModalOpen(false)} />
+      <SettingsModal
+        isOpen={isSettingsModalOpen}
+        onClose={() => setIsSettingsModalOpen(false)}
+      />
     </div>
   );
 }

@@ -1,8 +1,8 @@
-import { useEffect } from 'react';
-import { useChatContext } from '../../hooks/use-chat';
-import { createId } from '@paralleldrive/cuid2';
-import { useMCPServer } from '../../hooks/use-mcp-server';
-import { StreamableMessage } from '../../lib/ai-service';
+import { useEffect } from "react";
+import { useChatContext } from "../../hooks/use-chat";
+import { createId } from "@paralleldrive/cuid2";
+import { useMCPServer } from "../../hooks/use-mcp-server";
+import { StreamableMessage } from "../../lib/ai-service";
 
 export const ToolCaller: React.FC = () => {
   const { messages, addMessage, submit } = useChatContext();
@@ -10,12 +10,23 @@ export const ToolCaller: React.FC = () => {
 
   useEffect(() => {
     const lastMessage = messages[messages.length - 1];
-    if (lastMessage && lastMessage.role === 'assistant' && lastMessage.tool_calls && lastMessage.tool_calls.length > 0 && !lastMessage.isStreaming) {
+    if (
+      lastMessage &&
+      lastMessage.role === "assistant" &&
+      lastMessage.tool_calls &&
+      lastMessage.tool_calls.length > 0 &&
+      !lastMessage.isStreaming
+    ) {
       const execute = async () => {
-        const toolResults: StreamableMessage[] = []
+        const toolResults: StreamableMessage[] = [];
         for (const toolCall of lastMessage.tool_calls!) {
           const result = await executeToolCall(toolCall);
-          toolResults.push({ id: createId(), role: 'tool', content: result.content, tool_call_id: toolCall.id });
+          toolResults.push({
+            id: createId(),
+            role: "tool",
+            content: result.content,
+            tool_call_id: toolCall.id,
+          });
         }
         submit(toolResults);
       };

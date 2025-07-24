@@ -2,79 +2,86 @@ import React, { createContext, useCallback, useEffect, useState } from "react";
 import { useAIService } from "../hooks/use-ai-service";
 import { useMCPServer } from "../hooks/use-mcp-server";
 import { StreamableMessage } from "../lib/ai-service";
-import { useRoleContext } from "./RoleContext";
+import { useAssistantContext } from "./AssistantContext";
 
 export interface ChatContextType {
-    messages: StreamableMessage[];
-    addMessage: (message: StreamableMessage) => void;
-    isLoading: boolean;
-    error: Error | null;
-    submit: (messages?: StreamableMessage[]) => Promise<StreamableMessage>;
+  messages: StreamableMessage[];
+  addMessage: (message: StreamableMessage) => void;
+  isLoading: boolean;
+  error: Error | null;
+  submit: (messages?: StreamableMessage[]) => Promise<StreamableMessage>;
 }
 
-
-export const ChatContext = createContext<ChatContextType | undefined>(undefined);
-
+export const ChatContext = createContext<ChatContextType | undefined>(
+  undefined,
+);
 
 interface ChatProviderProps {
-    children: React.ReactNode;
+  children: React.ReactNode;
 }
 
+export const ChatContextProvider: React.FC<ChatProviderProps> = ({
+  children,
+}) => {
+  const [messages, setMessages] = useState<StreamableMessage[]>([]);
+  const {
+    error,
+    isLoading,
+    response,
+    submit: triggerAIService,
+  } = useAIService();
+  const { currentAssistant } = useAssistantContext();
+  const { connectServers } = useMCPServer();
 
-export const ChatContextProvider: React.FC<ChatProviderProps> = ({ children }) => {
-    const [messages, setMessages] = useState<StreamableMessage[]>([]);
-    const { error, isLoading, response, submit: triggerAIService } = useAIService();
-    const { currentRole } = useRoleContext();
-    const {  connectServers } = useMCPServer();
+  useEffect(() => {
+    if (currentAssistant) {
+      connectServers(currentAssistant);
+    }
+  }, [currentAssistant, connectServers]);
 
-    useEffect(() => {
-        if (currentRole) {
-            connectServers(currentRole);
+  useEffect(() => {
+    if (response) {
+      setMessages((prev) => {
+        const lastMessage = prev[prev.length - 1];
+        let updatedResponse = { ...response };
+
+        if (lastMessage?.role === "assistant" && lastMessage.isStreaming) {
+          return [...prev.slice(0, -1), updatedResponse];
+        } else {
+          return [...prev, updatedResponse];
         }
-    }, [currentRole, connectServers]);
+      });
+    }
+  }, [response]);
 
-    useEffect(() => {
-        if (response) {
-            setMessages(prev => {
-                const lastMessage = prev[prev.length - 1];
-                let updatedResponse = { ...response };
+  const addMessage = useCallback((message: StreamableMessage) => {
+    setMessages((prev) => [...prev, message]);
+  }, []);
 
-                if (lastMessage?.role === "assistant" && lastMessage.isStreaming) {
-                    return [
-                        ...prev.slice(0, -1),
-                        updatedResponse
-                    ];
-                } else {
-                    return [
-                        ...prev,
-                        updatedResponse
-                    ];
-                }
-            });
-        }
-    }, [response]);
+  const submit = useCallback(
+    async (messageToAdd?: StreamableMessage[]) => {
+      const newMessages = messageToAdd
+        ? [...messages, ...messageToAdd]
+        : messages;
+      if (messageToAdd) {
+        setMessages(newMessages);
+      }
+      return await triggerAIService(newMessages);
+    },
+    [messages, triggerAIService],
+  );
 
-    const addMessage = useCallback((message: StreamableMessage) => {
-        setMessages(prev => [...prev, message]);
-    }, []);
-
-    const submit = useCallback(async (messageToAdd?: StreamableMessage[]) => {
-        const newMessages = messageToAdd ? [...messages, ...messageToAdd] : messages;
-        if (messageToAdd) {
-            setMessages(newMessages);
-        }
-        return await triggerAIService(newMessages);
-    }, [messages, triggerAIService]);
-
-    return (
-        <ChatContext.Provider value={{
-            messages,
-            addMessage,
-            isLoading,
-            error,
-            submit,
-        }}>
-            {children}
-        </ChatContext.Provider>
-    );
+  return (
+    <ChatContext.Provider
+      value={{
+        messages,
+        addMessage,
+        isLoading,
+        error,
+        submit,
+      }}
+    >
+      {children}
+    </ChatContext.Provider>
+  );
 };

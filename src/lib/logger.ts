@@ -1,43 +1,65 @@
-import { debug, info, warn, error as logError, trace } from '@tauri-apps/plugin-log';
+import {
+  debug,
+  info,
+  warn,
+  error as logError,
+  trace,
+} from "@tauri-apps/plugin-log";
 
 export class Logger {
-  private static defaultContext = 'TauriAgent';
+  private static defaultContext = "TauriAgent";
 
-  private static formatLogMessage(message: string, args: any[], defaultContext: string): { formattedMessage: string; context: string } {
+  private static formatLogMessage(
+    message: string,
+    args: any[],
+    defaultContext: string,
+  ): { formattedMessage: string; context: string } {
     let actualContext = defaultContext;
     let logMessage = message;
     let logArgs = [...args];
 
     // Check if the last argument is a context string
-    if (logArgs.length > 0 && typeof logArgs[logArgs.length - 1] === 'string') {
+    if (logArgs.length > 0 && typeof logArgs[logArgs.length - 1] === "string") {
       actualContext = logArgs.pop(); // Remove and use as context
     }
 
     // Format the message and remaining arguments
     if (logArgs.length > 0) {
-      const formattedArgs = logArgs.map(arg => {
-        if (typeof arg === 'object' && arg !== null) {
+      const formattedArgs = logArgs.map((arg) => {
+        if (typeof arg === "object" && arg !== null) {
           return JSON.stringify(arg);
         }
         return String(arg);
       });
-      logMessage = `${logMessage} ${formattedArgs.join(' ')}`;
+      logMessage = `${logMessage} ${formattedArgs.join(" ")}`;
     }
     return { formattedMessage: logMessage, context: actualContext };
   }
 
   static async debug(message: string, ...args: any[]): Promise<void> {
-    const { formattedMessage, context } = Logger.formatLogMessage(message, args, Logger.defaultContext);
+    const { formattedMessage, context } = Logger.formatLogMessage(
+      message,
+      args,
+      Logger.defaultContext,
+    );
     await debug(`[${context}] ${formattedMessage}`);
   }
 
   static async info(message: string, ...args: any[]): Promise<void> {
-    const { formattedMessage, context } = Logger.formatLogMessage(message, args, Logger.defaultContext);
+    const { formattedMessage, context } = Logger.formatLogMessage(
+      message,
+      args,
+      Logger.defaultContext,
+    );
     await info(`[${context}] ${formattedMessage}`);
   }
 
   static async warn(message: string, ...args: any[]): Promise<void> {
-    const { formattedMessage, context } = Logger.formatLogMessage(message, args, Logger.defaultContext);
+    const { formattedMessage, context } = Logger.formatLogMessage(
+      message,
+      args,
+      Logger.defaultContext,
+    );
     await warn(`[${context}] ${formattedMessage}`);
   }
 
@@ -46,17 +68,30 @@ export class Logger {
     let remainingArgs = [...args];
 
     // Check if the last argument is an Error object
-    if (remainingArgs.length > 0 && remainingArgs[remainingArgs.length - 1] instanceof Error) {
+    if (
+      remainingArgs.length > 0 &&
+      remainingArgs[remainingArgs.length - 1] instanceof Error
+    ) {
       errorObj = remainingArgs.pop();
     }
 
-    const { formattedMessage, context } = Logger.formatLogMessage(message, remainingArgs, Logger.defaultContext);
-    const errorMsg = errorObj ? `${formattedMessage}: ${errorObj.message}` : formattedMessage;
+    const { formattedMessage, context } = Logger.formatLogMessage(
+      message,
+      remainingArgs,
+      Logger.defaultContext,
+    );
+    const errorMsg = errorObj
+      ? `${formattedMessage}: ${errorObj.message}`
+      : formattedMessage;
     await logError(`[${context}] ${errorMsg}`);
   }
 
   static async trace(message: string, ...args: any[]): Promise<void> {
-    const { formattedMessage, context } = Logger.formatLogMessage(message, args, Logger.defaultContext);
+    const { formattedMessage, context } = Logger.formatLogMessage(
+      message,
+      args,
+      Logger.defaultContext,
+    );
     await trace(`[${context}] ${formattedMessage}`);
   }
 }
@@ -73,10 +108,15 @@ export const log = {
 // Function to get a context-specific logger instance
 export function getLogger(contextName: string) {
   return {
-    debug: (message: string, ...args: any[]) => Logger.debug(message, ...args, contextName),
-    info: (message: string, ...args: any[]) => Logger.info(message, ...args, contextName),
-    warn: (message: string, ...args: any[]) => Logger.warn(message, ...args, contextName),
-    error: (message: string, ...args: any[]) => Logger.error(message, ...args, contextName),
-    trace: (message: string, ...args: any[]) => Logger.trace(message, ...args, contextName),
+    debug: (message: string, ...args: any[]) =>
+      Logger.debug(message, ...args, contextName),
+    info: (message: string, ...args: any[]) =>
+      Logger.info(message, ...args, contextName),
+    warn: (message: string, ...args: any[]) =>
+      Logger.warn(message, ...args, contextName),
+    error: (message: string, ...args: any[]) =>
+      Logger.error(message, ...args, contextName),
+    trace: (message: string, ...args: any[]) =>
+      Logger.trace(message, ...args, contextName),
   };
 }

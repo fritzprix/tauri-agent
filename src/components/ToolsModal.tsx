@@ -33,9 +33,14 @@ const ToolsModal: React.FC<ToolsModalProps> = ({ isOpen, onClose }) => {
           ) : (
             <div className="space-y-3">
               {availableTools.map((tool, index) => (
-                <div key={index} className="bg-gray-800 border border-gray-700 rounded p-3">
+                <div
+                  key={index}
+                  className="bg-gray-800 border border-gray-700 rounded p-3"
+                >
                   <div className="flex items-center gap-2 mb-2">
-                    <span className="text-blue-400 font-mono text-sm">🔧 {tool.name}</span>
+                    <span className="text-blue-400 font-mono text-sm">
+                      🔧 {tool.name}
+                    </span>
                   </div>
                   {tool.description && (
                     <p className="text-gray-300 text-sm">{tool.description}</p>

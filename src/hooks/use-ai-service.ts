@@ -7,14 +7,17 @@ import {
 } from "../lib/ai-service";
 import { getLogger } from "../lib/logger";
 import { useSettings } from "./use-settings";
-import { Role } from "../lib/db";
+import { Assistant } from "../lib/db";
 import { useMCPServer } from "./use-mcp-server";
 
 const logger = getLogger("useAIService");
 
 const DEFAULT_SYSTEM_PROMPT = "You are a helpful assistant.";
 
-export const useAIService = (config?: AIServiceConfig, role?: Role) => {
+export const useAIService = (
+  config?: AIServiceConfig,
+  assistant?: Assistant,
+) => {
   const {
     value: {
       preferredModel: { model, provider },
@@ -24,14 +27,17 @@ export const useAIService = (config?: AIServiceConfig, role?: Role) => {
   const [response, setResponse] = useState<StreamableMessage | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<Error | null>(null);
-  const serviceInstance = useMemo(() => AIServiceFactory.getService(provider, apiKeys[provider], {
+  const serviceInstance = useMemo(
+    () =>
+      AIServiceFactory.getService(provider, apiKeys[provider], {
         defaultModel: model,
         maxRetries: 3,
         maxTokens: 4096,
       }),
-    [provider, apiKeys, model]);
+    [provider, apiKeys, model],
+  );
 
-    const {availableTools} = useMCPServer();
+  const { availableTools } = useMCPServer();
 
   const submit = useCallback(
     async (messages: StreamableMessage[]): Promise<StreamableMessage> => {
@@ -48,15 +54,15 @@ export const useAIService = (config?: AIServiceConfig, role?: Role) => {
       try {
         const stream = serviceInstance.streamChat(messages, {
           modelName: model,
-          systemPrompt: role?.systemPrompt || DEFAULT_SYSTEM_PROMPT,
+          systemPrompt: assistant?.systemPrompt || DEFAULT_SYSTEM_PROMPT,
           availableTools,
           config: config,
         });
 
         for await (const chunk of stream) {
-          logger.info("chunk : ", {chunk});
+          logger.info("chunk : ", { chunk });
           const parsedChunk = JSON.parse(chunk);
-          
+
           if (parsedChunk.thinking) {
             thinking += parsedChunk.thinking;
           }
@@ -70,7 +76,8 @@ export const useAIService = (config?: AIServiceConfig, role?: Role) => {
 
               if (toolCalls[index]) {
                 if (toolCallChunk.function?.arguments) {
-                  toolCalls[index].function.arguments += toolCallChunk.function.arguments;
+                  toolCalls[index].function.arguments +=
+                    toolCallChunk.function.arguments;
                 }
                 if (toolCallChunk.id) {
                   toolCalls[index].id = toolCallChunk.id;
@@ -93,7 +100,7 @@ export const useAIService = (config?: AIServiceConfig, role?: Role) => {
             thinking,
             tool_calls: toolCalls,
           };
-          logger.info("message : ", {finalMessage});
+          logger.info("message : ", { finalMessage });
           setResponse(finalMessage);
         }
 
@@ -121,7 +128,15 @@ export const useAIService = (config?: AIServiceConfig, role?: Role) => {
         setIsLoading(false);
       }
     },
-    [role, model, provider, apiKeys, config, serviceInstance, availableTools]
+    [
+      assistant,
+      model,
+      provider,
+      apiKeys,
+      config,
+      serviceInstance,
+      availableTools,
+    ],
   );
 
   return { response, isLoading, error, submit };

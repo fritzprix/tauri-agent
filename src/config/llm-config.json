@@ -18,7 +18,7 @@
           "description": "Advanced model with 1M context, excellent for coding and instruction following"
         },
         "gpt-4.1-mini": {
-          "name": "GPT-4.1 Mini", 
+          "name": "GPT-4.1 Mini",
           "contextWindow": 1000000,
           "supportReasoning": true,
           "supportTools": true,
