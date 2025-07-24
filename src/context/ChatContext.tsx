@@ -3,22 +3,13 @@ import { useAIService } from "../hooks/use-ai-service";
 import { useMCPServer } from "../hooks/use-mcp-server";
 import { StreamableMessage } from "../lib/ai-service";
 import { useRoleContext } from "./RoleContext";
-import { getLogger } from "../lib/logger";
-
-const logger = getLogger("ChatContext");
-
 
 export interface ChatContextType {
     messages: StreamableMessage[];
     addMessage: (message: StreamableMessage) => void;
     isLoading: boolean;
     error: Error | null;
-    submit: (userMessage?: StreamableMessage) => Promise<StreamableMessage>;
-    mcpServerStatus: Record<string, boolean>;
-    isMCPConnecting: boolean;
-    connectToMCP: (role: any) => Promise<void>;
-    availableTools: any[];
-    executeToolCall: (toolCall: { id: string; type: 'function'; function: { name: string; arguments: string; } }) => Promise<{ role: 'tool'; content: string; tool_call_id: string }>;
+    submit: (messages?: StreamableMessage[]) => Promise<StreamableMessage>;
 }
 
 
@@ -34,30 +25,19 @@ export const ChatContextProvider: React.FC<ChatProviderProps> = ({ children }) =
     const [messages, setMessages] = useState<StreamableMessage[]>([]);
     const { error, isLoading, response, submit: triggerAIService } = useAIService();
     const { currentRole } = useRoleContext();
-    const { availableTools, executeToolCall, connectToMCP, mcpServerStatus, isMCPConnecting } = useMCPServer();
+    const {  connectServers } = useMCPServer();
 
     useEffect(() => {
         if (currentRole) {
-            connectToMCP(currentRole);
+            connectServers(currentRole);
         }
-    }, [currentRole, connectToMCP]);
+    }, [currentRole, connectServers]);
 
     useEffect(() => {
         if (response) {
             setMessages(prev => {
                 const lastMessage = prev[prev.length - 1];
                 let updatedResponse = { ...response };
-
-                try {
-                    logger.info("parsed ", {response});
-                    const parsed = JSON.parse(response.content);
-                    if (parsed.tool_calls) {
-                        updatedResponse.tool_calls = parsed.tool_calls;
-                    } 
-                } catch (e) {
-                    // Not a JSON string, keep content as is
-                    logger.info("error ", {e});
-                }
 
                 if (lastMessage?.role === "assistant" && lastMessage.isStreaming) {
                     return [
@@ -78,8 +58,8 @@ export const ChatContextProvider: React.FC<ChatProviderProps> = ({ children }) =
         setMessages(prev => [...prev, message]);
     }, []);
 
-    const submit = useCallback(async (messageToAdd?: StreamableMessage) => {
-        const newMessages = messageToAdd ? [...messages, messageToAdd] : messages;
+    const submit = useCallback(async (messageToAdd?: StreamableMessage[]) => {
+        const newMessages = messageToAdd ? [...messages, ...messageToAdd] : messages;
         if (messageToAdd) {
             setMessages(newMessages);
         }
@@ -93,11 +73,6 @@ export const ChatContextProvider: React.FC<ChatProviderProps> = ({ children }) =
             isLoading,
             error,
             submit,
-            mcpServerStatus,
-            isMCPConnecting,
-            connectToMCP,
-            availableTools,
-            executeToolCall
         }}>
             {children}
         </ChatContext.Provider>

@@ -35,7 +35,6 @@ function getDefaultRole(): Role {
 }
 
 export const RoleContextProvider = ({ children }: { children: ReactNode }) => {
-
   const [currentRole, setCurrentRole] = useState<Role | null>(null);
   const [{ value: roles, loading, error }, loadRoles] = useAsyncFn(async () => {
     let fetchedRoles = await dbService.getRoles();
@@ -47,7 +46,7 @@ export const RoleContextProvider = ({ children }: { children: ReactNode }) => {
     return fetchedRoles;
   }, []);
 
-  const { connectToMCP } = useMCPServer();
+  const { connectServers } = useMCPServer();
 
   useEffect(() => {
     loadRoles();
@@ -63,9 +62,9 @@ export const RoleContextProvider = ({ children }: { children: ReactNode }) => {
   useEffect(() => {
     if (currentRole) {
       logger.debug('Current role changed, connecting to MCP', { role: currentRole.name });
-      connectToMCP(currentRole);
+      connectServers(currentRole);
     }
-  }, [currentRole, connectToMCP]);
+  }, [currentRole, connectServers]);
 
   const [{ }, saveRole] = useAsyncFn(async (editingRole: Partial<Role>, mcpConfigText: string): Promise<Role | undefined> => {
     if (!editingRole?.name) {
@@ -101,18 +100,20 @@ export const RoleContextProvider = ({ children }: { children: ReactNode }) => {
       if (currentRole?.id === roleToSave.id || !currentRole) {
         setCurrentRole(roleToSave);
       }
+      await loadRoles();
       return roleToSave;
     } catch (error) {
       logger.error('Error saving role:', { error });
       alert('역할 저장 중 오류가 발생했습니다. MCP 설정이 올바른 JSON 형식인지 확인해주세요.');
       return undefined;
     }
-  }, [currentRole]);
+  }, [currentRole, loadRoles]);
 
   const [{ }, deleteRole] = useAsyncFn(async (roleId: string) => {
     if (window.confirm('이 역할을 삭제하시겠습니까?')) {
       try {
         await dbService.deleteRole(roleId);
+        await loadRoles();
         // The useEffect hook will handle setting a new currentRole
       } catch (error) {
         logger.error('Error deleting role:', { error });
@@ -121,7 +122,7 @@ export const RoleContextProvider = ({ children }: { children: ReactNode }) => {
         await loadRoles();
       }
     }
-  }, []);
+  }, [loadRoles]);
 
   logger.info("role context : ", {roles: roles?.length});
 

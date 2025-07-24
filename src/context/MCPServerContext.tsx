@@ -1,4 +1,5 @@
-import React, { createContext, ReactNode, useCallback, useEffect, useState } from 'react';
+import React, { createContext, ReactNode, useCallback, useState } from 'react';
+import { useAsyncFn } from 'react-use';
 import { Role } from '../lib/db';
 import { getLogger } from '../lib/logger';
 import { MCPTool, tauriMCPClient } from '../lib/tauri-mcp-client';
@@ -7,42 +8,42 @@ const logger = getLogger('MCPServerContext');
 
 interface MCPServerContextType {
   availableTools: MCPTool[];
-  isMCPConnecting: boolean;
-  mcpServerStatus: Record<string, boolean>;
-  showServerDropdown: boolean;
-  connectToMCP: (role: Role) => Promise<void>;
+  isConnecting: boolean;
+  status: Record<string, boolean>;
+  connectServers: (role: Role) => Promise<void>;
   executeToolCall: (toolCall: { id: string; type: 'function'; function: { name: string; arguments: string; } }) => Promise<{ role: 'tool'; content: string; tool_call_id: string }>;
-  getMCPStatus: () => { color: string; status: string };
-  getStatusText: () => string;
-  setShowServerDropdown: React.Dispatch<React.SetStateAction<boolean>>;
 }
 
 export const MCPServerContext = createContext<MCPServerContextType | undefined>(undefined);
 
 export const MCPServerProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [availableTools, setAvailableTools] = useState<MCPTool[]>([]);
-  const [isMCPConnecting, setIsMCPConnecting] = useState(false);
-  const [mcpServerStatus, setMcpServerStatus] = useState<Record<string, boolean>>({});
-  const [showServerDropdown, setShowServerDropdown] = useState(false);
-
-  const connectToMCP = useCallback(async (role: Role) => {
-    logger.debug(`Starting MCP connection for role: ${role.name}`);
-    setIsMCPConnecting(true);
-
+  const [serverStatus, setServerStatus] = useState<Record<string, boolean>>({});
+  const [{ loading: isConnecting }, connectServers] = useAsyncFn(async (role: Role) => {
     const serverStatus: Record<string, boolean> = {};
-
     try {
       const configForTauri = {
         mcpServers: role.mcpConfig.mcpServers || {}
       };
 
+      const servers = Object.keys(configForTauri.mcpServers)
+      
+      if (servers.length === 0) {
+        setServerStatus({});
+        setAvailableTools([]);
+        return;
+      }
+
       Object.keys(configForTauri.mcpServers).forEach(name => {
         serverStatus[name] = false;
       });
-      setMcpServerStatus(serverStatus);
 
+
+
+      setServerStatus(serverStatus);
       const tools = await tauriMCPClient.listToolsFromConfig(configForTauri);
-      logger.debug(`Received tools from Tauri:`, {tools});
+      logger.debug(`Received tools from Tauri:`, { tools });
+
 
       const connectedServers = await tauriMCPClient.getConnectedServers();
       for (const serverName of connectedServers) {
@@ -50,31 +51,32 @@ export const MCPServerProvider: React.FC<{ children: ReactNode }> = ({ children 
           serverStatus[serverName] = true;
         }
       }
-      setMcpServerStatus({ ...serverStatus });
+      setServerStatus({ ...serverStatus });
       setAvailableTools(tools);
       logger.debug(`Total tools loaded: ${tools.length}`);
 
     } catch (error) {
-      logger.error('Error connecting to MCP:', {error});
+      logger.error('Error connecting to MCP:', { error });
       Object.keys(serverStatus).forEach(key => {
         serverStatus[key] = false;
       });
-      setMcpServerStatus({ ...serverStatus });
-    } finally {
-      setIsMCPConnecting(false);
+      setServerStatus({ ...serverStatus });
     }
   }, []);
 
+
   const executeToolCall = useCallback(async (toolCall: { id: string; type: 'function'; function: { name: string; arguments: string; } }): Promise<{ role: 'tool'; content: string; tool_call_id: string }> => {
-    logger.debug(`Executing tool call:`, {toolCall});
+    logger.debug(`Executing tool call:`, { toolCall });
     const aiProvidedToolName = toolCall.function.name;
     let serverName: string | undefined;
     let toolName: string | undefined;
 
-    const parts = aiProvidedToolName.split(':');
+    // Use '__' as delimiter for URL and JSON safety
+    const delimiter = '__';
+    const parts = aiProvidedToolName.split(delimiter);
     if (parts.length >= 2) {
       serverName = parts[0];
-      toolName = parts.slice(1).join(':');
+      toolName = parts.slice(1).join(delimiter);
     }
 
     if (!serverName || !toolName) {
@@ -86,73 +88,28 @@ export const MCPServerProvider: React.FC<{ children: ReactNode }> = ({ children 
     try {
       toolArguments = JSON.parse(toolCall.function.arguments);
     } catch (parseError) {
-      logger.error(`Failed to parse tool arguments for ${toolCall.function.name}:`, {parseError});
+      logger.error(`Failed to parse tool arguments for ${toolCall.function.name}:`, { parseError });
       return { role: 'tool', content: `Error: Invalid tool arguments JSON: ${parseError instanceof Error ? parseError.message : String(parseError)}`, tool_call_id: toolCall.id };
     }
 
     try {
       const result = await tauriMCPClient.callTool(serverName, toolName, toolArguments);
-      logger.debug(`Tool execution result for ${toolCall.function.name}:`, {result});
+      logger.debug(`Tool execution result for ${toolCall.function.name}:`, { result });
       return { role: 'tool', content: JSON.stringify(result), tool_call_id: toolCall.id };
     } catch (execError) {
-      logger.error(`Tool execution failed for ${toolCall.function.name}:`, {execError});
+      logger.error(`Tool execution failed for ${toolCall.function.name}:`, { execError });
       return { role: 'tool', content: `Error: Tool '${toolCall.function.name}' failed: ${execError instanceof Error ? execError.message : String(execError)}`, tool_call_id: toolCall.id };
     }
   }, []);
 
-  const getMCPStatus = useCallback(() => {
-    const servers = Object.entries(mcpServerStatus);
-    if (servers.length === 0) return { color: 'bg-gray-400', status: 'none' };
 
-    const connectedCount = servers.filter(([_, isConnected]) => isConnected).length;
-    const totalCount = servers.length;
-
-    if (connectedCount === totalCount) {
-      return { color: 'bg-green-400', status: 'all' };
-    } else if (connectedCount > 0) {
-      return { color: 'bg-yellow-400', status: 'partial' };
-    } else {
-      return { color: 'bg-red-400', status: 'none' };
-    }
-  }, [mcpServerStatus]);
-
-  const getStatusText = useCallback(() => {
-    const { status } = getMCPStatus();
-    const servers = Object.entries(mcpServerStatus);
-    const connectedCount = servers.filter(([_, isConnected]) => isConnected).length;
-    const totalCount = servers.length;
-
-    switch (status) {
-      case 'all': return `All ${totalCount} servers connected`;
-      case 'partial': return `${connectedCount}/${totalCount} servers connected`;
-      case 'none': return totalCount > 0 ? `All ${totalCount} servers disconnected` : 'No servers configured';
-      default: return 'Unknown status';
-    }
-  }, [getMCPStatus, mcpServerStatus]);
-
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (showServerDropdown && !(event.target as Element).closest('.server-dropdown')) {
-        setShowServerDropdown(false);
-      }
-    };
-
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-    };
-  }, [showServerDropdown]);
 
   const value = {
     availableTools,
-    isMCPConnecting,
-    mcpServerStatus,
-    showServerDropdown,
-    connectToMCP,
+    isConnecting,
+    status: serverStatus,
+    connectServers,
     executeToolCall,
-    getMCPStatus,
-    getStatusText,
-    setShowServerDropdown,
   };
 
   return (

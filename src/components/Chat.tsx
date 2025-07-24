@@ -1,6 +1,5 @@
 import { createId } from "@paralleldrive/cuid2";
 import React, { useEffect, useRef, useState } from "react";
-import { ChatContextProvider } from "../context/ChatContext";
 import { useRoleContext } from "../context/RoleContext";
 import { useChatContext } from "../hooks/use-chat";
 import { useMCPServer } from "../hooks/use-mcp-server";
@@ -97,7 +96,7 @@ export default function Chat({ children }: ChatProps) {
     setAttachedFiles([]);
 
     try {
-      await submit(userMessage);
+      await submit([userMessage]);
     } catch (err) {
       logger.error('Error submitting message:', err);
     }

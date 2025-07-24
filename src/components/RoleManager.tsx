@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import { useRoleContext } from '../context/RoleContext';
 import { Role } from '../lib/db';
 import { getLogger } from '../lib/logger';
@@ -22,10 +22,8 @@ interface RoleManagerProps {
 
 export default function RoleManager({ onClose }: RoleManagerProps) {
   const { currentRole, roles, saveRole, deleteRole, setCurrentRole } = useRoleContext();
-  const { mcpServerStatus: serverStatus, isMCPConnecting: isCheckingStatus, connectToMCP } = useMCPServer();
+  const { status, isConnecting: isCheckingStatus, connectServers } = useMCPServer();
 
-  // MCP server status logic is now handled elsewhere or can be stubbed/removed if not needed
-  const checkServerStatuses = (_role: Role) => {};
 
   const [editingRole, setEditingRole] = useState<Partial<Role> | null>(null);
   const [isCreating, setIsCreating] = useState(false);
@@ -63,7 +61,6 @@ export default function RoleManager({ onClose }: RoleManagerProps) {
     setEditingRole(role);
     setIsCreating(false);
     setMcpConfigText(JSON.stringify(role.mcpConfig, null, 2));
-    checkServerStatuses(role);
   };
 
   const handleSaveRole = async () => {
@@ -86,10 +83,10 @@ export default function RoleManager({ onClose }: RoleManagerProps) {
     logger.debug(`Role "${roleToSave.name}" saved successfully`);
   };
   
-  const handleSelectRole = (role: Role) => {
+  const handleSelectRole = useCallback((role: Role) => {
     setCurrentRole(role);
-    connectToMCP(role);
-  };
+    connectServers(role);
+  },[connectServers, setCurrentRole]);
 
   const handleDeleteRole = async (role: Role) => {
     // Check if it's a default role
@@ -148,23 +145,6 @@ export default function RoleManager({ onClose }: RoleManagerProps) {
     }
   };
   
-  const handleCheckStatusForEditor = () => {
-      try {
-        const config = JSON.parse(mcpConfigText);
-        const tempRoleForCheck: Role = {
-            id: editingRole?.id || 'temp-check',
-            name: editingRole?.name || 'temp-check',
-            systemPrompt: '',
-            mcpConfig: config,
-            isDefault: false,
-            createdAt: new Date(),
-            updatedAt: new Date(),
-        };
-        checkServerStatuses(tempRoleForCheck);
-      } catch {
-        alert('유효하지 않은 JSON 형식입니다.');
-      }
-  }
 
   return (
     <Modal 
@@ -227,8 +207,8 @@ export default function RoleManager({ onClose }: RoleManagerProps) {
                             >
                               <StatusIndicator 
                                 status={
-                                  serverStatus[serverName] === true ? 'connected' : 
-                                  serverStatus[serverName] === false ? 'disconnected' : 'unknown'
+                                  status[serverName] === true ? 'connected' : 
+                                  status[serverName] === false ? 'disconnected' : 'unknown'
                                 }
                                 size="sm"
                               />
@@ -257,7 +237,6 @@ export default function RoleManager({ onClose }: RoleManagerProps) {
                     <Button 
                       size="sm"
                       variant="ghost"
-                      onClick={() => checkServerStatuses(role)}
                       disabled={isCheckingStatus}
                     >
                       {isCheckingStatus && currentRole?.id === role.id ? '확인중...' : '상태확인'}
@@ -316,7 +295,6 @@ export default function RoleManager({ onClose }: RoleManagerProps) {
                         <Button
                           size="sm"
                           variant="ghost"
-                          onClick={handleCheckStatusForEditor}
                           disabled={isCheckingStatus}
                         >
                           {isCheckingStatus ? '확인중...' : '서버 상태 확인'}
@@ -353,11 +331,11 @@ export default function RoleManager({ onClose }: RoleManagerProps) {
                       * mcpServers 형식만 사용됩니다. 빈 객체로 두면 MCP 서버를 사용하지 않습니다.
                     </div>
                     
-                    {editingRole && Object.keys(serverStatus).length > 0 && (
+                    {editingRole && Object.keys(status).length > 0 && (
                       <div className="mt-3 p-2 bg-gray-900 rounded border border-gray-700">
                         <div className="text-xs text-gray-400 mb-2">에디터 서버 상태:</div>
                         <div className="flex flex-wrap gap-2">
-                          {Object.entries(serverStatus).map(([serverName, isConnected]) => (
+                          {Object.entries(status).map(([serverName, isConnected]) => (
                             <div
                               key={serverName}
                               className="flex items-center gap-1 text-xs px-2 py-1 rounded bg-gray-800"

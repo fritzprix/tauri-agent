@@ -1,16 +1,19 @@
+import { createId } from "@paralleldrive/cuid2";
 import Groq from "groq-sdk";
 import OpenAI from "openai";
 import Anthropic from "@anthropic-ai/sdk";
-import { 
-  FunctionDeclaration, 
-  FunctionDeclarationsTool, 
-  GoogleGenerativeAI, 
-  SchemaType, 
-  Content 
-} from "@google/generative-ai";
+import {
+  FunctionDeclaration,
+  GoogleGenAI,
+  Content,
+  Type,
+} from "@google/genai";
 import { ChatCompletionTool as GroqChatCompletionTool } from "groq-sdk/resources/chat/completions.mjs";
 import { ChatCompletionTool as OpenAIChatCompletionTool } from "openai/resources/chat/completions.mjs";
-import { MessageParam as AnthropicMessageParam, Tool as AnthropicTool } from "@anthropic-ai/sdk/resources/messages.mjs";
+import {
+  MessageParam as AnthropicMessageParam,
+  Tool as AnthropicTool,
+} from "@anthropic-ai/sdk/resources/messages.mjs";
 import { MCPTool } from "./tauri-mcp-client";
 import { getLogger } from "./logger";
 
@@ -28,22 +31,25 @@ export interface AIServiceConfig {
 }
 
 export enum AIServiceProvider {
-  Groq = 'groq',
-  OpenAI = 'openai',
-  Anthropic = 'anthropic',
-  Gemini = 'gemini',
-  Empty = 'empty',
+  Groq = "groq",
+  OpenAI = "openai",
+  Anthropic = "anthropic",
+  Gemini = "gemini",
+  Empty = "empty",
 }
-
 
 export interface StreamableMessage {
   id: string;
   content: string;
-  role: 'user' | 'assistant' | 'system' | 'tool';
+  role: "user" | "assistant" | "system" | "tool";
   thinking?: string;
   isStreaming?: boolean;
-  attachments?: { name: string; content: string; }[];
-  tool_calls?: { id: string; type: 'function'; function: { name: string; arguments: string; } }[];
+  attachments?: { name: string; content: string }[];
+  tool_calls?: {
+    id: string;
+    type: "function";
+    function: { name: string; arguments: string };
+  }[];
   tool_use?: { id: string; name: string; input: Record<string, unknown> };
   function_call?: { name: string; arguments: Record<string, unknown> };
   tool_call_id?: string;
@@ -57,7 +63,7 @@ export class AIServiceError extends Error {
     public originalError?: Error
   ) {
     super(message);
-    this.name = 'AIServiceError';
+    this.name = "AIServiceError";
   }
 }
 
@@ -65,53 +71,155 @@ export class AIServiceError extends Error {
 
 class MessageValidator {
   static validateMessage(message: StreamableMessage): void {
-    if (!message.id || typeof message.id !== 'string') {
-      throw new Error('Message must have a valid id');
+    if (!message.id || typeof message.id !== "string") {
+      throw new Error("Message must have a valid id");
     }
-    if ((!message.content && (message.role === 'user' || message.role === 'system')) || typeof message.content !== 'string') {
-      logger.error(`Invalid message content: `, { message});
-      throw new Error('Message must have valid content');
+    if (
+      (!message.content &&
+        (message.role === "user" || message.role === "system")) ||
+      typeof message.content !== "string"
+    ) {
+      logger.error(`Invalid message content: `, { message });
+      throw new Error("Message must have valid content");
     }
-    if (!['user', 'assistant', 'system', 'tool'].includes(message.role)) {
-      throw new Error('Message must have a valid role');
+    if (!["user", "assistant", "system", "tool"].includes(message.role)) {
+      throw new Error("Message must have a valid role");
     }
-    
+
     // Sanitize content length
     if (message.content.length > 100000) {
-      throw new Error('Message content too long');
+      throw new Error("Message content too long");
     }
   }
 
   static validateTool(tool: MCPTool): void {
-    if (!tool.name || typeof tool.name !== 'string') {
-      throw new Error('Tool must have a valid name');
+    if (!tool.name || typeof tool.name !== "string") {
+      throw new Error("Tool must have a valid name");
     }
-    if (!tool.description || typeof tool.description !== 'string') {
-      throw new Error('Tool must have a valid description');
+    if (!tool.description || typeof tool.description !== "string") {
+      throw new Error("Tool must have a valid description");
     }
-    if (!tool.input_schema || typeof tool.input_schema !== 'object') {
-      throw new Error('Tool must have a valid input_schema');
+    if (!tool.input_schema || typeof tool.input_schema !== "object") {
+      throw new Error("Tool must have a valid input_schema");
     }
   }
 
   static sanitizeToolArguments(args: string): Record<string, unknown> {
     try {
       const parsed = JSON.parse(args);
-      if (typeof parsed !== 'object' || parsed === null) {
-        throw new Error('Tool arguments must be an object');
+      if (typeof parsed !== "object" || parsed === null) {
+        throw new Error("Tool arguments must be an object");
       }
       return parsed;
     } catch (error) {
-      throw new Error(`Invalid tool arguments: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      throw new Error(
+        `Invalid tool arguments: ${
+          error instanceof Error ? error.message : "Unknown error"
+        }`
+      );
     }
   }
 }
 
 // --- Tool Conversion with Enhanced Type Safety ---
 
-type ProviderToolType = GroqChatCompletionTool | OpenAIChatCompletionTool | AnthropicTool | FunctionDeclaration;
-type ProviderToolsType = ProviderToolType[] | FunctionDeclarationsTool;
+type ProviderToolType =
+  | GroqChatCompletionTool
+  | OpenAIChatCompletionTool
+  | AnthropicTool
+  | FunctionDeclaration;
+type ProviderToolsType = ProviderToolType[];
 
+// Helper function to convert JSON schema types to Gemini types
+function convertPropertiesToGeminiTypes(properties: Record<string, unknown>): any {
+  if (!properties || typeof properties !== 'object') {
+    return {};
+  }
+  
+  const convertedProperties: any = {};
+  
+  for (const [key, value] of Object.entries(properties)) {
+    if (!value || typeof value !== 'object') {
+      convertedProperties[key] = { type: Type.STRING };
+      continue;
+    }
+    
+    const prop = value as any;
+    const propType = prop.type;
+    
+    switch (propType) {
+      case 'string':
+        convertedProperties[key] = { type: Type.STRING };
+        break;
+      case 'number':
+      case 'integer':
+        convertedProperties[key] = { type: Type.NUMBER };
+        break;
+      case 'boolean':
+        convertedProperties[key] = { type: Type.BOOLEAN };
+        break;
+      case 'array':
+        convertedProperties[key] = { 
+          type: Type.ARRAY,
+          items: prop.items ? convertSinglePropertyToGeminiType(prop.items) : { type: Type.STRING }
+        };
+        break;
+      case 'object':
+        convertedProperties[key] = { type: Type.OBJECT };
+        break;
+      default:
+        convertedProperties[key] = { type: Type.STRING };
+        break;
+    }
+    
+    if (prop.description && typeof prop.description === 'string') {
+      convertedProperties[key].description = prop.description;
+    }
+  }
+  
+  return convertedProperties;
+}
+
+// Helper function to convert a single property type
+function convertSinglePropertyToGeminiType(prop: any): any {
+  if (!prop || typeof prop !== 'object') {
+    return { type: Type.STRING };
+  }
+  
+  switch (prop.type) {
+    case 'string':
+      return { type: Type.STRING };
+    case 'number':
+    case 'integer':
+      return { type: Type.NUMBER };
+    case 'boolean':
+      return { type: Type.BOOLEAN };
+    case 'array':
+      return { type: Type.ARRAY };
+    case 'object':
+      return { type: Type.OBJECT };
+    default:
+      return { type: Type.STRING };
+  }
+}
+
+// // Helper function to sanitize function names for Gemini
+// function sanitizeFunctionName(name: string): string {
+//   // Gemini requires: start with letter/underscore, alphanumeric + _ . -, max 64 chars
+//   let sanitized = name
+//     .replace(/:/g, '_') // Replace colons specifically 
+//     .replace(/[^a-zA-Z0-9_.-]/g, '_') // Replace other invalid chars with underscore
+//     .substring(0, 64); // Max 64 chars
+  
+//   // Ensure it starts with letter or underscore
+//   if (!/^[a-zA-Z_]/.test(sanitized)) {
+//     sanitized = '_' + sanitized.substring(0, 63);
+//   }
+  
+//   return sanitized;
+// }
+
+// Updated tool conversion for Gemini - use parameters with Type enums
 function convertMCPToolToProviderFormat(mcpTool: MCPTool, provider: AIServiceProvider): ProviderToolType {
   MessageValidator.validateTool(mcpTool);
   
@@ -126,6 +234,14 @@ function convertMCPToolToProviderFormat(mcpTool: MCPTool, provider: AIServicePro
 
   switch (provider) {
     case AIServiceProvider.OpenAI:
+      return {
+        type: "function",
+        function: {
+          name: mcpTool.name,
+          description: mcpTool.description,
+          parameters: commonParameters,
+        },
+      } satisfies OpenAIChatCompletionTool;
     case AIServiceProvider.Groq:
       return {
         type: "function",
@@ -142,13 +258,14 @@ function convertMCPToolToProviderFormat(mcpTool: MCPTool, provider: AIServicePro
         input_schema: commonParameters,
       };
     case AIServiceProvider.Gemini:
+      // Use parameters with Type enums for Google GenAI SDK
       return {
         name: mcpTool.name,
         description: mcpTool.description,
         parameters: {
-          type: SchemaType.OBJECT,
-          properties: properties as Record<string, any>,
-          required: required,
+          type: Type.OBJECT,
+          properties: convertPropertiesToGeminiTypes(mcpTool.input_schema.properties),
+          required: mcpTool.input_schema.required || [],
         },
       };
     case AIServiceProvider.Empty:
@@ -161,13 +278,10 @@ function convertMCPToolToProviderFormat(mcpTool: MCPTool, provider: AIServicePro
 
 export function convertMCPToolsToProviderTools(mcpTools: MCPTool[], provider: AIServiceProvider): ProviderToolsType {
   if (provider === AIServiceProvider.Gemini) {
-    return {
-      functionDeclarations: mcpTools.map(tool => convertMCPToolToProviderFormat(tool, provider) as FunctionDeclaration),
-    };
+    return mcpTools.map(tool => convertMCPToolToProviderFormat(tool, provider) as FunctionDeclaration);
   }
   return mcpTools.map(tool => convertMCPToolToProviderFormat(tool, provider));
 }
-
 
 // --- Enhanced Service Interface ---
 
@@ -181,7 +295,7 @@ export interface IAIService {
       config?: AIServiceConfig;
     }
   ): AsyncGenerator<string, void, unknown>;
-  
+
   dispose(): void;
 }
 
@@ -202,14 +316,17 @@ abstract class BaseAIService implements IAIService {
   }
 
   protected validateApiKey(apiKey: string): void {
-    if (!apiKey || typeof apiKey !== 'string' || apiKey.trim().length === 0) {
-      throw new AIServiceError('Invalid API key provided', this.getProvider());
+    if (!apiKey || typeof apiKey !== "string" || apiKey.trim().length === 0) {
+      throw new AIServiceError("Invalid API key provided", this.getProvider());
     }
   }
 
   protected validateMessages(messages: StreamableMessage[]): void {
     if (!Array.isArray(messages) || messages.length === 0) {
-      throw new AIServiceError('Messages array cannot be empty', this.getProvider());
+      throw new AIServiceError(
+        "Messages array cannot be empty",
+        this.getProvider()
+      );
     }
     messages.forEach(MessageValidator.validateMessage);
   }
@@ -219,36 +336,41 @@ abstract class BaseAIService implements IAIService {
     maxRetries: number = this.defaultConfig.maxRetries!
   ): Promise<T> {
     let lastError: Error;
-    
+
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
       try {
         return await this.withTimeout(operation(), this.defaultConfig.timeout!);
       } catch (error) {
         lastError = error as Error;
-        
+
         if (attempt === maxRetries) {
           throw new AIServiceError(
-            `Operation failed after ${maxRetries + 1} attempts: ${lastError.message}`,
+            `Operation failed after ${maxRetries + 1} attempts: ${
+              lastError.message
+            }`,
             this.getProvider(),
             undefined,
             lastError
           );
         }
-        
+
         // Exponential backoff
         const delay = this.defaultConfig.retryDelay! * Math.pow(2, attempt);
-        await new Promise(resolve => setTimeout(resolve, delay));
+        await new Promise((resolve) => setTimeout(resolve, delay));
       }
     }
-    
+
     throw lastError!;
   }
 
-  protected async withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
+  protected async withTimeout<T>(
+    promise: Promise<T>,
+    timeoutMs: number
+  ): Promise<T> {
     const timeoutPromise = new Promise<never>((_, reject) => {
-      setTimeout(() => reject(new Error('Operation timed out')), timeoutMs);
+      setTimeout(() => reject(new Error("Operation timed out")), timeoutMs);
     });
-    
+
     return Promise.race([promise, timeoutPromise]);
   }
 
@@ -266,10 +388,9 @@ abstract class BaseAIService implements IAIService {
   abstract dispose(): void;
 }
 
-
 export class EmptyAIService extends BaseAIService {
   constructor() {
-    super('empty_api_key'); // Dummy API key
+    super("empty_api_key"); // Dummy API key
   }
 
   getProvider(): AIServiceProvider {
@@ -285,7 +406,10 @@ export class EmptyAIService extends BaseAIService {
       config?: AIServiceConfig;
     }
   ): AsyncGenerator<string, void, unknown> {
-    throw new AIServiceError("EmptyAIService does not support streaming chat", AIServiceProvider.Empty);
+    throw new AIServiceError(
+      "EmptyAIService does not support streaming chat",
+      AIServiceProvider.Empty
+    );
     // Yield nothing, this is an empty service
   }
 
@@ -301,7 +425,10 @@ export class GroqService extends BaseAIService {
 
   constructor(apiKey: string, config?: AIServiceConfig) {
     super(apiKey, config);
-    this.groq = new Groq({ apiKey: this.apiKey, dangerouslyAllowBrowser: true });
+    this.groq = new Groq({
+      apiKey: this.apiKey,
+      dangerouslyAllowBrowser: true,
+    });
   }
 
   getProvider(): AIServiceProvider {
@@ -318,37 +445,54 @@ export class GroqService extends BaseAIService {
     } = {}
   ): AsyncGenerator<string, void, unknown> {
     this.validateMessages(messages);
-    logger.info("tools : ", {availableTools: options.availableTools});
-    
+    logger.info("tools : ", { availableTools: options.availableTools });
+
     const config = { ...this.defaultConfig, ...options.config };
-    
+
     try {
-      const groqMessages = this.convertToGroqMessages(messages, options.systemPrompt);
-      
+      const groqMessages = this.convertToGroqMessages(
+        messages,
+        options.systemPrompt
+      );
+
       const chatCompletion = await this.withRetry(() =>
         this.groq.chat.completions.create({
           messages: groqMessages,
-          model: options.modelName || config.defaultModel || "llama-3.1-8b-instant",
+          model:
+            options.modelName || config.defaultModel || "llama-3.1-8b-instant",
           temperature: config.temperature,
           max_tokens: config.maxTokens,
+          reasoning_format: "parsed",
           stream: true,
-          tools: options.availableTools ? convertMCPToolsToProviderTools(options.availableTools, AIServiceProvider.Groq) as GroqChatCompletionTool[] : undefined,
+          tools: options.availableTools
+            ? (convertMCPToolsToProviderTools(
+                options.availableTools,
+                AIServiceProvider.Groq
+              ) as GroqChatCompletionTool[])
+            : undefined,
           tool_choice: options.availableTools ? "auto" : undefined,
         })
       );
 
       for await (const chunk of chatCompletion) {
+        logger.info("inside chunk : ", { chunk: JSON.stringify(chunk) });
         if (chunk.choices[0]?.delta?.reasoning) {
           yield JSON.stringify({ thinking: chunk.choices[0].delta.reasoning });
         } else if (chunk.choices[0]?.delta?.tool_calls) {
-          yield JSON.stringify({ tool_calls: chunk.choices[0].delta.tool_calls });
-        } else if(chunk.choices[0]?.delta?.content) {
-          yield JSON.stringify({ content: chunk.choices[0]?.delta?.content || ""});
+          yield JSON.stringify({
+            tool_calls: chunk.choices[0].delta.tool_calls,
+          });
+        } else if (chunk.choices[0]?.delta?.content) {
+          yield JSON.stringify({
+            content: chunk.choices[0]?.delta?.content || "",
+          });
         }
       }
     } catch (error) {
       throw new AIServiceError(
-        `Groq streaming failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        `Groq streaming failed: ${
+          error instanceof Error ? error.message : "Unknown error"
+        }`,
         AIServiceProvider.Groq,
         undefined,
         error instanceof Error ? error : undefined
@@ -356,17 +500,46 @@ export class GroqService extends BaseAIService {
     }
   }
 
-  private convertToGroqMessages(messages: StreamableMessage[], systemPrompt?: string) {
-    const groqMessages = messages.map(m => {
-      if (m.tool_calls) return { role: 'assistant' as const, content: m.content || null, tool_calls: m.tool_calls };
-      if (m.role === 'tool') return { role: 'tool' as const, tool_call_id: m.id, content: m.content };
-      return { role: m.role as 'user' | 'assistant' | 'system', content: m.content };
-    });
-    
+  private convertToGroqMessages(
+    messages: StreamableMessage[],
+    systemPrompt?: string
+  ): Groq.Chat.Completions.ChatCompletionMessageParam[] {
+    const groqMessages: Groq.Chat.Completions.ChatCompletionMessageParam[] = [];
+
     if (systemPrompt) {
-      groqMessages.unshift({ role: "system", content: systemPrompt });
+      groqMessages.push({ role: "system", content: systemPrompt });
     }
-    
+
+    for (const m of messages) {
+      if (m.role === "user") {
+        groqMessages.push({ role: "user", content: m.content });
+      } else if (m.role === "assistant") {
+        if (m.tool_calls && m.tool_calls.length > 0) {
+          groqMessages.push({
+            role: "assistant",
+            content: m.content || null,
+            tool_calls: m.tool_calls,
+          });
+        } else if (m.thinking) {
+          groqMessages.push({
+            role: "assistant",
+            content: m.content,
+          });
+        } else {
+          groqMessages.push({ role: "assistant", content: m.content });
+        }
+      } else if (m.role === "tool") {
+        if (m.tool_call_id) {
+          groqMessages.push({
+            role: "tool",
+            tool_call_id: m.tool_call_id,
+            content: m.content,
+          });
+        } else {
+          logger.warn(`Tool message missing tool_call_id: ${JSON.stringify(m)}`);
+        }
+      }
+    }
     return groqMessages;
   }
 
@@ -380,7 +553,10 @@ export class OpenAIService extends BaseAIService {
 
   constructor(apiKey: string, config?: AIServiceConfig) {
     super(apiKey, config);
-    this.openai = new OpenAI({ apiKey: this.apiKey, dangerouslyAllowBrowser: true });
+    this.openai = new OpenAI({
+      apiKey: this.apiKey,
+      dangerouslyAllowBrowser: true,
+    });
   }
 
   getProvider(): AIServiceProvider {
@@ -397,34 +573,56 @@ export class OpenAIService extends BaseAIService {
     } = {}
   ): AsyncGenerator<string, void, unknown> {
     this.validateMessages(messages);
-    
+
     const config = { ...this.defaultConfig, ...options.config };
-    
+    if(options.availableTools) {
+    logger.info(" tool calls: ", {
+      tools: convertMCPToolsToProviderTools(
+                options?.availableTools,
+                AIServiceProvider.OpenAI
+            )
+    });
+  }
+
     try {
-      const openaiMessages = this.convertToOpenAIMessages(messages, options.systemPrompt);
-      
+      const openaiMessages = this.convertToOpenAIMessages(
+        messages,
+        options.systemPrompt
+      );
+      logger.info("openai call : ", { openaiMessages });
+
       const completion = await this.withRetry(() =>
         this.openai.chat.completions.create({
           model: options.modelName || config.defaultModel || "gpt-4-turbo",
           messages: openaiMessages,
-          max_tokens: config.maxTokens,
-          temperature: config.temperature,
+          max_completion_tokens: config.maxTokens,
           stream: true,
-          tools: options.availableTools ? convertMCPToolsToProviderTools(options.availableTools, AIServiceProvider.OpenAI) as OpenAIChatCompletionTool[] : undefined,
+          tools: options.availableTools
+            ? (convertMCPToolsToProviderTools(
+                options.availableTools,
+                AIServiceProvider.OpenAI
+            ) as OpenAIChatCompletionTool[])
+            : undefined,
           tool_choice: options.availableTools ? "auto" : undefined,
         })
       );
 
       for await (const chunk of completion) {
         if (chunk.choices[0]?.delta?.tool_calls) {
-          yield JSON.stringify({ tool_calls: chunk.choices[0].delta.tool_calls });
+          yield JSON.stringify({
+            tool_calls: chunk.choices[0].delta.tool_calls,
+          });
         } else if (chunk.choices[0]?.delta?.content) {
-          yield JSON.stringify({ content: chunk.choices[0]?.delta?.content || "" });
+          yield JSON.stringify({
+            content: chunk.choices[0]?.delta?.content || "",
+          });
         }
       }
     } catch (error) {
       throw new AIServiceError(
-        `OpenAI streaming failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        `OpenAI streaming failed: ${
+          error instanceof Error ? error.message : "Unknown error"
+        }`,
         AIServiceProvider.OpenAI,
         undefined,
         error instanceof Error ? error : undefined
@@ -432,17 +630,41 @@ export class OpenAIService extends BaseAIService {
     }
   }
 
-  private convertToOpenAIMessages(messages: StreamableMessage[], systemPrompt?: string) {
-    const openaiMessages = messages.map(m => {
-      if (m.tool_calls) return { role: 'assistant' as const, content: m.content || null, tool_calls: m.tool_calls };
-      if (m.role === 'tool') return { role: 'tool' as const, tool_call_id: m.id, content: m.content };
-      return { role: m.role as 'user' | 'assistant' | 'system', content: m.content };
-    });
-    
+  private convertToOpenAIMessages(
+    messages: StreamableMessage[],
+    systemPrompt?: string
+  ): OpenAI.Chat.Completions.ChatCompletionMessageParam[] {
+    const openaiMessages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [];
+
     if (systemPrompt) {
-      openaiMessages.unshift({ role: "system", content: systemPrompt });
+      openaiMessages.push({ role: "system", content: systemPrompt });
     }
-    
+
+    for (const m of messages) {
+      if (m.role === "user") {
+        openaiMessages.push({ role: "user", content: m.content });
+      } else if (m.role === "assistant") {
+        if (m.tool_calls && m.tool_calls.length > 0) {
+          openaiMessages.push({
+            role: "assistant",
+            content: m.content || null,
+            tool_calls: m.tool_calls,
+          });
+        } else {
+          openaiMessages.push({ role: "assistant", content: m.content });
+        }
+      } else if (m.role === "tool") {
+        if (m.tool_call_id) {
+          openaiMessages.push({
+            role: "tool",
+            tool_call_id: m.tool_call_id,
+            content: m.content,
+          });
+        } else {
+          logger.warn(`Tool message missing tool_call_id: ${JSON.stringify(m)}`);
+        }
+      }
+    }
     return openaiMessages;
   }
 
@@ -473,39 +695,58 @@ export class AnthropicService extends BaseAIService {
     } = {}
   ): AsyncGenerator<string, void, unknown> {
     this.validateMessages(messages);
-    
+
     const config = { ...this.defaultConfig, ...options.config };
-    
+
     try {
       const anthropicMessages = this.convertToAnthropicMessages(messages);
-      
+
       const completion = await this.withRetry(() =>
         this.anthropic.messages.create({
-          model: options.modelName || config.defaultModel || "claude-3-sonnet-20240229",
+          model:
+            options.modelName ||
+            config.defaultModel ||
+            "claude-3-sonnet-20240229",
           max_tokens: config.maxTokens!,
           messages: anthropicMessages,
           stream: true,
           thinking: {
             budget_tokens: 1024,
-            type:'enabled'
+            type: "enabled",
           },
           system: options.systemPrompt,
-          tools: options.availableTools ? convertMCPToolsToProviderTools(options.availableTools, AIServiceProvider.Anthropic) as AnthropicTool[] : undefined,
+          tools: options.availableTools
+            ? (convertMCPToolsToProviderTools(
+                options.availableTools,
+                AIServiceProvider.Anthropic
+              ) as AnthropicTool[])
+            : undefined,
         })
       );
 
       for await (const chunk of completion) {
-        if (chunk.type === "content_block_delta" && chunk.delta.type === 'text_delta') {
+        if (
+          chunk.type === "content_block_delta" &&
+          chunk.delta.type === "text_delta"
+        ) {
           yield JSON.stringify({ content: chunk.delta.text });
-        } else if(chunk.type === "content_block_delta" && chunk.delta.type === "thinking_delta") {
+        } else if (
+          chunk.type === "content_block_delta" &&
+          chunk.delta.type === "thinking_delta"
+        ) {
           yield JSON.stringify({ thinking: chunk.delta.thinking });
-        } else if(chunk.type === "content_block_delta" && chunk.delta.type === "input_json_delta") {
+        } else if (
+          chunk.type === "content_block_delta" &&
+          chunk.delta.type === "input_json_delta"
+        ) {
           yield JSON.stringify({ tool_calls: chunk.delta.partial_json });
         }
       }
     } catch (error) {
       throw new AIServiceError(
-        `Anthropic streaming failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        `Anthropic streaming failed: ${
+          error instanceof Error ? error.message : "Unknown error"
+        }`,
         AIServiceProvider.Anthropic,
         undefined,
         error instanceof Error ? error : undefined
@@ -513,46 +754,63 @@ export class AnthropicService extends BaseAIService {
     }
   }
 
-  private convertToAnthropicMessages(messages: StreamableMessage[]): AnthropicMessageParam[] {
-    return messages.map(m => {
-      if (m.role === 'user') return { role: 'user' as const, content: m.content };
-      if (m.role === 'assistant') {
+  private convertToAnthropicMessages(
+    messages: StreamableMessage[]
+  ): AnthropicMessageParam[] {
+    const anthropicMessages: AnthropicMessageParam[] = [];
+
+    for (const m of messages) {
+      if (m.role === "system") {
+        // System messages are handled separately in the API call
+        continue;
+      }
+
+      if (m.role === "user") {
+        anthropicMessages.push({ role: "user", content: m.content });
+      } else if (m.role === "assistant") {
         if (m.tool_calls) {
-          return { 
-            role: 'assistant' as const, 
-            content: m.tool_calls.map(tc => ({ 
-              type: 'tool_use' as const, 
-              id: tc.id, 
-              name: tc.function.name, 
-              input: MessageValidator.sanitizeToolArguments(tc.function.arguments)
-            })) 
-          };
+          anthropicMessages.push({
+            role: "assistant",
+            content: m.tool_calls.map((tc) => ({
+              type: "tool_use" as const,
+              id: tc.id,
+              name: tc.function.name,
+              input: MessageValidator.sanitizeToolArguments(
+                tc.function.arguments
+              ),
+            })),
+          });
+        } else if (m.tool_use) {
+          anthropicMessages.push({
+            role: "assistant",
+            content: [
+              {
+                type: "tool_use" as const,
+                id: m.tool_use.id,
+                name: m.tool_use.name,
+                input: m.tool_use.input,
+              },
+            ],
+          });
+        } else {
+          anthropicMessages.push({ role: "assistant", content: m.content });
         }
-        if (m.tool_use) {
-          return { 
-            role: 'assistant' as const, 
-            content: [{ 
-              type: 'tool_use' as const, 
-              id: m.tool_use.id, 
-              name: m.tool_use.name, 
-              input: m.tool_use.input 
-            }] 
-          };
-        }
-        return { role: 'assistant' as const, content: m.content };
+      } else if (m.role === "tool") {
+        anthropicMessages.push({
+          role: "user",
+          content: [
+            {
+              type: "tool_result" as const,
+              tool_use_id: m.tool_call_id!,
+              content: m.content,
+            },
+          ],
+        });
+      } else {
+        logger.warn(`Unsupported message role for Anthropic: ${m.role}`);
       }
-      if (m.role === 'tool') {
-        return { 
-          role: 'user' as const, 
-          content: [{ 
-            type: 'tool_result' as const, 
-            tool_use_id: m.id, 
-            content: m.content 
-          }] 
-        };
-      }
-      throw new Error(`Unsupported message role: ${m.role}`);
-    }).filter(Boolean) as AnthropicMessageParam[];
+    }
+    return anthropicMessages;
   }
 
   dispose(): void {
@@ -561,11 +819,13 @@ export class AnthropicService extends BaseAIService {
 }
 
 export class GeminiService extends BaseAIService {
-  private genAI: GoogleGenerativeAI;
+  private genAI: GoogleGenAI;
 
   constructor(apiKey: string, config?: AIServiceConfig) {
     super(apiKey, config);
-    this.genAI = new GoogleGenerativeAI(this.apiKey);
+    this.genAI = new GoogleGenAI({
+      apiKey: this.apiKey,
+    });
   }
 
   getProvider(): AIServiceProvider {
@@ -582,34 +842,88 @@ export class GeminiService extends BaseAIService {
     } = {}
   ): AsyncGenerator<string, void, unknown> {
     this.validateMessages(messages);
-    
+
     const config = { ...this.defaultConfig, ...options.config };
-    
+
     try {
-      const model = this.genAI.getGenerativeModel({ 
-        model: options.modelName || config.defaultModel || "gemini-1.5-pro-latest", 
-        systemInstruction: options.systemPrompt 
-      });
-      
       const geminiMessages = this.convertToGeminiMessages(messages);
-      const tools = options.availableTools ? convertMCPToolsToProviderTools(options.availableTools, AIServiceProvider.Gemini) as FunctionDeclarationsTool : undefined;
+      const tools = options.availableTools
+        ? [{ functionDeclarations: convertMCPToolsToProviderTools(
+            options.availableTools,
+            AIServiceProvider.Gemini
+          ) as FunctionDeclaration[] }]
+        : undefined;
 
-      const result = await this.withRetry(() =>
-        model.generateContentStream({
+      const model = options.modelName || config.defaultModel || "gemini-1.5-pro";
+      logger.info("gemini call : ", { model, config });
+
+      // Fixed API call structure based on your example
+      const geminiConfig: any = {
+        responseMimeType: 'text/plain',
+      };
+
+      if (tools) {
+        geminiConfig.tools = tools;
+      }
+
+      if (options.systemPrompt) {
+        geminiConfig.systemInstruction = [{ text: options.systemPrompt }];
+      }
+
+      if (config.maxTokens) {
+        geminiConfig.maxOutputTokens = config.maxTokens;
+      }
+
+      if (config.temperature !== undefined) {
+        geminiConfig.temperature = config.temperature;
+      }
+
+      logger.info("gemini final request: ", {
+        model: model,
+        config: geminiConfig,
+        contents: geminiMessages,
+      });
+
+      const result = await this.withRetry(async () => {
+        return this.genAI.models.generateContentStream({
+          model: model,
+          config: geminiConfig,
           contents: geminiMessages,
-          tools: tools ? [tools] : undefined,
-        })
-      );
+        });
+      });
 
-      for await (const chunk of result.stream) {
-        const chunkText = chunk.text();
-        if (chunkText) {
-          yield JSON.stringify({ content: chunkText });
+      for await (const chunk of result) {
+        if (chunk.functionCalls && chunk.functionCalls.length > 0) {
+          yield JSON.stringify({
+            tool_calls: chunk.functionCalls.map((fc: any) => ({
+              id: createId(), // Generate a new ID for each tool call
+              type: "function",
+              function: {
+                name: fc.name,
+                arguments: JSON.stringify(fc.args), // Convert args object to JSON string
+              },
+            })),
+          });
+        } else if (chunk.text) {
+          yield JSON.stringify({ content: chunk.text });
         }
       }
     } catch (error) {
+      logger.error("Gemini API Error Details:", {
+        error: error,
+        message: error instanceof Error ? error.message : 'Unknown error',
+        stack: error instanceof Error ? error.stack : undefined,
+        requestData: {
+          model: options.modelName || config.defaultModel || "gemini-1.5-pro",
+          messagesCount: messages.length,
+          hasTools: !!options.availableTools?.length,
+          systemPrompt: !!options.systemPrompt
+        }
+      });
       throw new AIServiceError(
-        `Gemini streaming failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        `Gemini streaming failed: ${
+          error instanceof Error ? error.message : "Unknown error"
+        }`,
         AIServiceProvider.Gemini,
         undefined,
         error instanceof Error ? error : undefined
@@ -618,10 +932,71 @@ export class GeminiService extends BaseAIService {
   }
 
   private convertToGeminiMessages(messages: StreamableMessage[]): Content[] {
-    return messages.map(m => ({
-      role: m.role === 'assistant' ? 'model' : 'user',
-      parts: [{ text: m.content }],
-    }));
+    const geminiMessages: Content[] = [];
+
+    for (const m of messages) {
+      if (m.role === "system") {
+        continue; // Skip system messages, handled by systemInstruction
+      }
+
+      if (m.role === "user" && m.content) {
+        geminiMessages.push({
+          role: "user",
+          parts: [{ text: m.content }],
+        });
+      } else if (m.role === "assistant") {
+        if (m.tool_calls && m.tool_calls.length > 0) {
+          geminiMessages.push({
+            role: "model",
+            parts: m.tool_calls.map((tc) => ({
+              functionCall: {
+                name: tc.function.name,
+                args: MessageValidator.sanitizeToolArguments(tc.function.arguments),
+              },
+            })),
+          });
+        } else if (m.content) {
+          geminiMessages.push({
+            role: "model",
+            parts: [{ text: m.content }],
+          });
+        }
+      } else if (m.role === "tool") {
+        // Find the corresponding assistant message to get the function name
+        let functionName: string | undefined;
+        for (let j = messages.indexOf(m) - 1; j >= 0; j--) {
+          const prevMessage = messages[j];
+          if (prevMessage.role === "assistant" && prevMessage.tool_calls) {
+            const toolCall = prevMessage.tool_calls.find(
+              (tc) => tc.id === m.tool_call_id
+            );
+            if (toolCall) {
+              functionName = toolCall.function.name;
+              break;
+            }
+          }
+        }
+
+        if (functionName) {
+          geminiMessages.push({
+            role: "function", // Gemini expects 'function' role for tool results
+            parts: [
+              {
+                functionResponse: {
+                  name: functionName,
+                  response: JSON.parse(m.content), // Assuming tool content is JSON string
+                },
+              },
+            ],
+          });
+        } else {
+          logger.warn(`Could not find function name for tool message with tool_call_id: ${m.tool_call_id}`);
+          // Optionally, handle this error more robustly or skip the message
+        }
+      }
+    }
+
+    return geminiMessages;
   }
 
   dispose(): void {
@@ -642,18 +1017,18 @@ export class AIServiceFactory {
   private static readonly INSTANCE_TTL = 1000 * 60 * 60; // 1 hour
 
   static getService(
-    provider: AIServiceProvider, 
-    apiKey: string, 
+    provider: AIServiceProvider,
+    apiKey: string,
     config?: AIServiceConfig
   ): IAIService {
     const instanceKey = `${provider}:${apiKey}`;
     const now = Date.now();
-    
+
     // Clean up expired instances
     this.cleanupExpiredInstances(now);
-    
+
     const existing = this.instances.get(instanceKey);
-    if (existing && (now - existing.created) < this.INSTANCE_TTL) {
+    if (existing && now - existing.created < this.INSTANCE_TTL) {
       return existing.service;
     }
 
@@ -679,12 +1054,16 @@ export class AIServiceFactory {
           service = new GeminiService(apiKey, config);
           break;
         default:
-          logger.warn(`Unknown AI service provider: ${provider}. Returning EmptyAIService.`);
+          logger.warn(
+            `Unknown AI service provider: ${provider}. Returning EmptyAIService.`
+          );
           service = new EmptyAIService();
           break;
       }
     } catch (e) {
-      logger.error(`Failed to create service for provider ${provider} with error: ${e}. Returning EmptyAIService.`);
+      logger.error(
+        `Failed to create service for provider ${provider} with error: ${e}. Returning EmptyAIService.`
+      );
       service = new EmptyAIService();
     }
 
@@ -707,7 +1086,7 @@ export class AIServiceFactory {
   private static cleanupExpiredInstances(now: number): void {
     for (const instanceKey of this.instances.keys()) {
       const instance = this.instances.get(instanceKey);
-      if (instance && (now - instance.created) >= this.INSTANCE_TTL) {
+      if (instance && now - instance.created >= this.INSTANCE_TTL) {
         instance.service.dispose();
         this.instances.delete(instanceKey);
       }
