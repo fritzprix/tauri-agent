@@ -9,7 +9,8 @@ import {
 } from "react";
 import { useAsyncFn } from "react-use";
 import { useMCPServer } from "../hooks/use-mcp-server";
-import { dbService, Assistant } from "../lib/db";
+import { dbService } from "../lib/db";
+import { Assistant } from "../types/chat";
 import { getLogger } from "../lib/logger";
 
 const logger = getLogger("AssistantContext");
@@ -118,6 +119,7 @@ export const AssistantContextProvider = ({
           systemPrompt,
           mcpConfig: finalConfig,
           isDefault: editingAssistant.isDefault || false,
+          localServices: editingAssistant.localServices || [],
           createdAt: assistantCreatedAt || new Date(),
           updatedAt: new Date(),
         };

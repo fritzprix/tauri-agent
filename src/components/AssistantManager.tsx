@@ -2,10 +2,11 @@
 
 import { useCallback, useState } from "react";
 import { useAssistantContext } from "../context/AssistantContext";
-import { Assistant } from "../lib/db";
+import { Assistant } from "../types/chat";
 import { getLogger } from "../lib/logger";
 import { Badge, Button, Input, Modal, StatusIndicator, Textarea } from "./ui";
 import { useMCPServer } from "../hooks/use-mcp-server";
+import { useLocalTools } from "../context/LocalToolContext";
 
 const logger = getLogger("AssistantManager");
 
@@ -26,6 +27,7 @@ export default function AssistantManager({ onClose }: AssistantManagerProps) {
     isConnecting: isCheckingStatus,
     connectServers,
   } = useMCPServer();
+  const { getAvailableServices, getToolsByService } = useLocalTools();
 
   const [editingAssistant, setEditingAssistant] =
     useState<Partial<Assistant> | null>(null);
@@ -67,6 +69,7 @@ export default function AssistantManager({ onClose }: AssistantManagerProps) {
   };
 
   const handleSaveAssistant = async () => {
+    logger.info("SAVE!!!!!!");
     if (!editingAssistant) return;
     let assistantToSave = { ...editingAssistant } as Assistant;
     try {
@@ -79,7 +82,9 @@ export default function AssistantManager({ onClose }: AssistantManagerProps) {
       return;
     }
 
-    await saveAssistant(editingAssistant, mcpConfigText);
+    logger.info("saved : ", {assistantToSave});
+
+    await saveAssistant(assistantToSave, mcpConfigText);
     setEditingAssistant(null);
     setIsCreating(false);
     setMcpConfigText("");
@@ -96,10 +101,10 @@ export default function AssistantManager({ onClose }: AssistantManagerProps) {
 
   const handleDeleteAssistant = async (assistant: Assistant) => {
     // Check if it's a default role
-    // if (assistant.isDefault) {
-    //   alert("기본 어시스턴트는 삭제할 수 없습니다.");
-    //   return;
-    // }
+    if (assistant.isDefault) {
+      alert("기본 어시스턴트는 삭제할 수 없습니다.");
+      return;
+    }
 
     // Confirm deletion
     if (
@@ -216,11 +221,13 @@ export default function AssistantManager({ onClose }: AssistantManagerProps) {
                     {assistant.systemPrompt}
                   </p>
                   <div className="text-xs text-gray-500 mb-2">
-                    MCP 서버:{" "}
+                    MCP 서버:{
+                      " "
+                    }
                     {assistant.mcpConfig?.mcpServers
                       ? Object.keys(assistant.mcpConfig.mcpServers).length
                       : 0}
-                    개
+                    개, 로컬 서비스: {assistant.localServices?.length || 0}개
                   </div>
 
                   {currentAssistant?.id === assistant.id && (
@@ -326,8 +333,57 @@ export default function AssistantManager({ onClose }: AssistantManagerProps) {
                     }))
                   }
                   placeholder="AI가 수행할 역할과 행동 방식을 설명하세요..."
-                  className="h-32"
-                />
+                    className="h-32"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-gray-400 font-medium">
+                    로컬 서비스 활성화
+                  </label>
+                  <div className="space-y-2 mt-2 p-2 border border-gray-700 rounded-md">
+                    {getAvailableServices().map((serviceName) => (
+                      <div key={serviceName}>
+                        <h4 className="text-sm font-semibold text-gray-300 mb-1">
+                          {serviceName}
+                        </h4>
+                        <div className="space-y-1 pl-2">
+                          {getToolsByService(serviceName).map((tool) => (
+                            <div key={tool.name} className="flex items-center">
+                              <input
+                                type="checkbox"
+                                id={`tool-${tool.name}`}
+                                checked={editingAssistant?.localServices?.includes(
+                                  serviceName,
+                                ) || false}
+                                onChange={(e) => {
+                                  const newLocalServices = e.target.checked
+                                    ? [
+                                        ...(editingAssistant?.localServices || []),
+                                        serviceName,
+                                      ]
+                                    : editingAssistant?.localServices?.filter(
+                                        (s: string) => s !== serviceName,
+                                      ) || [];
+                                  setEditingAssistant((prev) => ({
+                                    ...prev,
+                                    localServices: newLocalServices,
+                                  }));
+                                }}
+                                className="mr-2"
+                              />
+                              <label
+                                htmlFor={`tool-${tool.name}`}
+                                className="text-sm text-gray-400"
+                              >
+                                {tool.name}
+                              </label>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
 
                 <div>
                   <div className="flex justify-between items-center mb-2">

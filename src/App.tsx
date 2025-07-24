@@ -5,6 +5,8 @@ import Button from "./components/ui/Button";
 import { ChatContextProvider } from "./context/ChatContext";
 import "./globals.css";
 import { ModelOptionsProvider } from "./context/ModelProvider";
+import { LocalToolProvider } from "./context/LocalToolContext";
+import { WeatherTool } from "./components/WeatherTool";
 
 function App() {
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
@@ -17,15 +19,18 @@ function App() {
       </header>
       <main className="flex-1 overflow-hidden">
         <ModelOptionsProvider>
-          <ChatContextProvider>
-            <Chat />
-          </ChatContextProvider>
+          <LocalToolProvider>
+            <WeatherTool />
+            <ChatContextProvider>
+              <Chat />
+            </ChatContextProvider>
+          </LocalToolProvider>
+          <SettingsModal
+            isOpen={isSettingsModalOpen}
+            onClose={() => setIsSettingsModalOpen(false)}
+          />
         </ModelOptionsProvider>
       </main>
-      <SettingsModal
-        isOpen={isSettingsModalOpen}
-        onClose={() => setIsSettingsModalOpen(false)}
-      />
     </div>
   );
 }

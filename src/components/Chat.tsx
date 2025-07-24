@@ -1,8 +1,9 @@
 import { createId } from "@paralleldrive/cuid2";
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState, useMemo } from "react";
 import { useAssistantContext } from "../context/AssistantContext";
 import { useChatContext } from "../hooks/use-chat";
 import { useMCPServer } from "../hooks/use-mcp-server";
+import { useLocalTools } from "../hooks/use-local-tools";
 import { StreamableMessage } from "../lib/ai-service";
 import { getLogger } from "../lib/logger";
 import AssistantManager from "./AssistantManager";
@@ -25,7 +26,12 @@ export default function Chat({ children }: ChatProps) {
   const [attachedFiles, setAttachedFiles] = useState<
     { name: string; content: string }[]
   >([]);
-  const { availableTools } = useMCPServer();
+  const { availableTools: mcpTools } = useMCPServer();
+  const { availableTools: localTools } = useLocalTools();
+  const availableTools = useMemo(
+    () => [...mcpTools, ...localTools],
+    [mcpTools, localTools],
+  );
   const [input, setInput] = useState("");
   const { submit, isLoading, messages } = useChatContext();
   const messagesEndRef = useRef<HTMLDivElement>(null);

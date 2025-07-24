@@ -2,11 +2,13 @@ import { useEffect } from "react";
 import { useChatContext } from "../../hooks/use-chat";
 import { createId } from "@paralleldrive/cuid2";
 import { useMCPServer } from "../../hooks/use-mcp-server";
+import { useLocalTools } from "../../hooks/use-local-tools";
 import { StreamableMessage } from "../../lib/ai-service";
 
 export const ToolCaller: React.FC = () => {
   const { messages, addMessage, submit } = useChatContext();
-  const { executeToolCall } = useMCPServer();
+  const { executeToolCall: callMcpTool } = useMCPServer();
+  const { isLocalTool, executeToolCall: callLocalTool } = useLocalTools();
 
   useEffect(() => {
     const lastMessage = messages[messages.length - 1];
@@ -20,7 +22,9 @@ export const ToolCaller: React.FC = () => {
       const execute = async () => {
         const toolResults: StreamableMessage[] = [];
         for (const toolCall of lastMessage.tool_calls!) {
-          const result = await executeToolCall(toolCall);
+          const toolName = toolCall.function.name;
+        const callFunction = isLocalTool(toolName) ? callLocalTool : callMcpTool;
+        const result = await callFunction(toolCall);
           toolResults.push({
             id: createId(),
             role: "tool",
@@ -32,7 +36,7 @@ export const ToolCaller: React.FC = () => {
       };
       execute();
     }
-  }, [messages, addMessage, submit, executeToolCall]);
+  }, [messages, addMessage, submit]);
 
   return null;
 };

@@ -7,8 +7,9 @@ import {
 } from "../lib/ai-service";
 import { getLogger } from "../lib/logger";
 import { useSettings } from "./use-settings";
-import { Assistant } from "../lib/db";
 import { useMCPServer } from "./use-mcp-server";
+import { useLocalTools } from "./use-local-tools";
+import { useAssistantContext } from "../context/AssistantContext";
 
 const logger = getLogger("useAIService");
 
@@ -16,7 +17,6 @@ const DEFAULT_SYSTEM_PROMPT = "You are a helpful assistant.";
 
 export const useAIService = (
   config?: AIServiceConfig,
-  assistant?: Assistant,
 ) => {
   const {
     value: {
@@ -36,8 +36,16 @@ export const useAIService = (
       }),
     [provider, apiKeys, model],
   );
+  const { currentAssistant: assistant } = useAssistantContext();
 
-  const { availableTools } = useMCPServer();
+  const { availableTools: mcpTools } = useMCPServer();
+  const { availableTools: localTools } = useLocalTools();
+
+  const availableTools = useMemo(
+    () => [...mcpTools, ...localTools],
+    [mcpTools, localTools],
+  );
+  logger.info("availableTools : ", { localTools });
 
   const submit = useCallback(
     async (messages: StreamableMessage[]): Promise<StreamableMessage> => {
