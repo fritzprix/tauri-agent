@@ -32,24 +32,24 @@ export const useAIService = (config?: AIServiceConfig) => {
         maxRetries: 3,
         maxTokens: 4096,
       }),
-    [provider, apiKeys, model],
+    [provider, apiKeys, model]
   );
-  const { currentAssistant: assistant } = useAssistantContext();
+  const { getCurrentAssistant } = useAssistantContext();
 
-  const { availableTools: mcpTools } = useMCPServer();
-  const { availableTools: localTools } = useLocalTools();
+  const { getAvailableTools: getAvailableMCPTools } = useMCPServer();
+  const { getAvailableTools: getAvailableLocalTools } = useLocalTools();
 
-  const availableTools = useMemo(
-    () => [...mcpTools, ...localTools],
-    [mcpTools, localTools],
-  );
-  logger.info("availableTools : ", { localTools });
 
   const submit = useCallback(
     async (messages: StreamableMessage[]): Promise<StreamableMessage> => {
       setIsLoading(true);
       setError(null);
       setResponse(null);
+
+      const availableTools = [
+        ...getAvailableMCPTools(),
+        ...getAvailableLocalTools(),
+      ].filter(Boolean);
 
       let currentResponseId = createId();
       let fullContent = "";
@@ -60,13 +60,12 @@ export const useAIService = (config?: AIServiceConfig) => {
       try {
         const stream = serviceInstance.streamChat(messages, {
           modelName: model,
-          systemPrompt: assistant?.systemPrompt || DEFAULT_SYSTEM_PROMPT,
+          systemPrompt: getCurrentAssistant()?.systemPrompt || DEFAULT_SYSTEM_PROMPT,
           availableTools,
           config: config,
         });
 
         for await (const chunk of stream) {
-          logger.info("chunk : ", { chunk });
           const parsedChunk = JSON.parse(chunk);
 
           if (parsedChunk.thinking) {
@@ -106,7 +105,7 @@ export const useAIService = (config?: AIServiceConfig) => {
             thinking,
             tool_calls: toolCalls,
           };
-          logger.info("message : ", { finalMessage });
+
           setResponse(finalMessage);
         }
 
@@ -118,6 +117,7 @@ export const useAIService = (config?: AIServiceConfig) => {
           isStreaming: false,
           tool_calls: toolCalls,
         };
+        logger.info("message : ", { finalMessage });
         setResponse(finalMessage);
         return finalMessage;
       } catch (err) {
@@ -135,14 +135,15 @@ export const useAIService = (config?: AIServiceConfig) => {
       }
     },
     [
-      assistant,
       model,
       provider,
       apiKeys,
       config,
       serviceInstance,
-      availableTools,
-    ],
+      getAvailableLocalTools,
+      getAvailableMCPTools,
+      getCurrentAssistant
+    ]
   );
 
   return { response, isLoading, error, submit };

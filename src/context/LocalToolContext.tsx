@@ -1,14 +1,16 @@
 import React, {
-  useState,
-  useCallback,
-  useRef,
-  useMemo,
   createContext,
+  useCallback,
   useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
 } from "react";
 import { MCPTool } from "../lib/tauri-mcp-client";
 import { Tool } from "../types/chat";
 import { useAssistantContext } from "./AssistantContext";
+
 
 /**
  * Represents a single tool within a service, pairing its definition with its handler.
@@ -38,6 +40,7 @@ interface LocalToolContextType {
   getAvailableServices: () => string[];
   getService: (serviceName: string) => LocalService | undefined;
   getToolByName: (toolName: string) => ServiceTool | undefined;
+  getAvailableTools: () => Tool[];
   executeToolCall: (toolCall: {
     id: string;
     function: { name: string; arguments: string };
@@ -162,6 +165,17 @@ export function LocalToolProvider({ children }: { children: React.ReactNode }) {
     return enabledTools;
   }, [currentAssistant, getService, version]);
 
+  const availableToolsRef = useRef(availableTools);
+
+  useEffect(() => {
+    availableToolsRef.current = availableTools;
+  },[availableTools]);
+
+  const getAvailableTools = useCallback(() => {
+    return availableToolsRef.current;
+  }, []);
+
+
   const isLocalTool = useCallback(
     (toolName: string) => {
       return allRegisteredTools.some((tool) => tool.name === toolName);
@@ -176,6 +190,7 @@ export function LocalToolProvider({ children }: { children: React.ReactNode }) {
       availableTools,
       getToolsByService,
       getAvailableServices,
+      getAvailableTools,
       getService,
       getToolByName,
       executeToolCall,
@@ -185,6 +200,7 @@ export function LocalToolProvider({ children }: { children: React.ReactNode }) {
       registerService,
       unregisterService,
       availableTools,
+      getAvailableTools,
       getToolsByService,
       getAvailableServices,
       getService,

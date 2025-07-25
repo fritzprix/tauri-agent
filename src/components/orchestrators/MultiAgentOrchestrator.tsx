@@ -3,10 +3,9 @@ import { useAssistantContext } from '../../context/AssistantContext';
 import { LocalService, useLocalTools } from '../../context/LocalToolContext';
 import { useChatContext } from '../../hooks/use-chat';
 
-import { ChevronDown, ChevronUp, Check, Clock } from 'lucide-react';
-import { Button } from '../ui';
-import { Assistant } from '../../types/chat';
 import { createId } from '@paralleldrive/cuid2';
+import { Assistant } from '../../types/chat';
+import { Button } from '../ui';
 
 const MULTI_AGENT_ORCHESTRATOR_ASSISTANT_ID = 'multi-agent-orchestrator';
 const MULTI_AGENT_SERVICE = "multi-agent-orchestrator-service";
@@ -42,12 +41,12 @@ const MultiAgentOrchestrator: React.FC = () => {
   const { registerService, unregisterService } = useLocalTools();
   const { addMessage, submit } = useChatContext();
 
-  const [isExpanded, setIsExpanded] = useState(true);
-  const [planItems, setPlanItems] = useState<PlanItem[]>([]);
+  const [isExpanded, setIsExpanded] = useState(false);
   const plan = useRef<PlanItem[]>([]);
 
   const isActive = currentAssistant?.id === MULTI_AGENT_ORCHESTRATOR_ASSISTANT_ID;
 
+  // ✨ Clean, stable tool handlers using the simpler useStableHandler
   const handlePromptToUser = useCallback(({ prompt }: PromptToUserInput) => {
     addMessage({
       assistantId: MULTI_AGENT_ORCHESTRATOR_ASSISTANT_ID,
@@ -70,18 +69,16 @@ const MultiAgentOrchestrator: React.FC = () => {
     } else {
       throw new Error(`Assistant with ID ${assistantId} not found`);
     }
-  }, [assistants, submit, setCurrentAssistant]);
+  },[submit]);
 
   const handleSetPlan = useCallback(({ items }: SetPlanInput) => {
     const newPlan = items.map(item => ({ plan: item, complete: false } satisfies PlanItem));
     plan.current = newPlan;
-    setPlanItems([...newPlan]);
   }, []);
 
   const handleCheckPlanItem = useCallback(({ index }: CheckPlanItemInput) => {
     if (index >= 0 && index < plan.current.length) {
       plan.current[index].complete = true;
-      setPlanItems([...plan.current]);
     } else {
       throw new Error(`Invalid plan item index: ${index}`);
     }
@@ -89,8 +86,7 @@ const MultiAgentOrchestrator: React.FC = () => {
 
   const handleClearPlan = useCallback(() => {
     plan.current = [];
-    setPlanItems([]);
-  }, []);
+  },[]);
 
   const handleReportResult = useCallback(({ resultInDetail }: ReportResultInput) => {
     addMessage({
@@ -99,8 +95,9 @@ const MultiAgentOrchestrator: React.FC = () => {
       content: resultInDetail,
       role: 'assistant'
     });
-  }, [addMessage]);
+  },[]);
 
+  // ✨ Now localService is stable - handlers never change
   const localService: LocalService = useMemo(() => ({
     name: MULTI_AGENT_SERVICE,
     tools: [
@@ -216,12 +213,13 @@ Available assistants: ${assistants.map(a => `${a.id}: ${a.name}`).join(', ')}`,
     updatedAt: new Date()
   }), [localService, assistants]);
 
+  // ✨ Now this useEffect won't cause infinite loops
   useEffect(() => {
     registerService(localService);
     return () => {
       unregisterService(MULTI_AGENT_SERVICE);
     };
-  }, [registerService, unregisterService, localService]);
+  }, [localService]); // localService is now stable
 
   const handleActivateOrchestrator = () => {
     setCurrentAssistant(multiAgentOrchestratorAssistant);
@@ -234,36 +232,6 @@ Available assistants: ${assistants.map(a => `${a.id}: ${a.name}`).join(', ')}`,
     handleClearPlan(); // Clear plan when deactivating
   };
 
-  const PlanDisplay: React.FC = () => {
-    if (planItems.length === 0) return null;
-
-    return (
-      <div className="mt-4 p-3 bg-gray-700 rounded-lg">
-        <h4 className="text-sm font-semibold mb-2 flex items-center">
-          <Clock className="mr-2" size={16} />
-          Current Plan
-        </h4>
-        <div className="space-y-2">
-          {planItems.map((item, index) => (
-            <div key={index} className="flex items-center space-x-2">
-              <div className={`w-4 h-4 rounded-full flex items-center justify-center ${item.complete ? 'bg-green-600' : 'bg-gray-500'
-                }`}>
-                {item.complete && <Check size={10} className="text-white" />}
-              </div>
-              <span className={`text-sm ${item.complete ? 'line-through text-gray-400' : 'text-white'}`}>
-                {item.plan}
-              </span>
-            </div>
-          ))}
-        </div>
-        <div className="mt-2 pt-2 border-t border-gray-600">
-          <div className="text-xs text-gray-400">
-            Progress: {planItems.filter(item => item.complete).length} / {planItems.length} completed
-          </div>
-        </div>
-      </div>
-    );
-  };
 
   if (!isActive) {
     return (
@@ -283,7 +251,6 @@ Available assistants: ${assistants.map(a => `${a.id}: ${a.name}`).join(', ')}`,
       <div className="flex justify-between items-center cursor-pointer" onClick={() => setIsExpanded(!isExpanded)}>
         <h3 className="text-lg font-semibold flex items-center">
           Multi-Agent Orchestrator Active
-          {isExpanded ? <ChevronUp className="ml-2" size={18} /> : <ChevronDown className="ml-2" size={18} />}
         </h3>
         <Button
           onClick={handleDeactivateOrchestrator}
@@ -323,8 +290,6 @@ Available assistants: ${assistants.map(a => `${a.id}: ${a.name}`).join(', ')}`,
               </div>
             </div>
           </div>
-
-          <PlanDisplay />
         </div>
       )}
     </div>

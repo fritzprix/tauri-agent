@@ -4,6 +4,7 @@ import React, {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 import { useAsyncFn } from "react-use";
@@ -16,6 +17,7 @@ const logger = getLogger("MCPServerContext");
 
 interface MCPServerContextType {
   availableTools: MCPTool[];
+  getAvailableTools: () => MCPTool[];
   isConnecting: boolean;
   status: Record<string, boolean>;
   connectServers: (assistant: Assistant) => Promise<void>;
@@ -35,6 +37,7 @@ export const MCPServerProvider: React.FC<{ children: ReactNode }> = ({
 }) => {
   const [availableTools, setAvailableTools] = useState<MCPTool[]>([]);
   const [serverStatus, setServerStatus] = useState<Record<string, boolean>>({});
+  const availableToolsRef = useRef(availableTools);
   const { currentAssistant } = useAssistantContext();
   const [{ loading: isConnecting }, connectServers] = useAsyncFn(
     async (assistant: Assistant) => {
@@ -154,16 +157,25 @@ export const MCPServerProvider: React.FC<{ children: ReactNode }> = ({
   );
 
   useEffect(() => {
+    availableToolsRef.current = availableTools;
+  },[availableTools]);
+
+  useEffect(() => {
     if (currentAssistant) {
       logger.info("connect : ", { currentAssistant: currentAssistant.name });
       connectServers(currentAssistant);
     }
   }, [connectServers, currentAssistant]);
 
+  const getAvailableTools = useCallback(() => {
+    return availableToolsRef.current;
+  },[])
+
   const value: MCPServerContextType = useMemo(
     () => ({
       availableTools,
       isConnecting,
+      getAvailableTools,
       status: serverStatus,
       connectServers,
       executeToolCall,
@@ -172,6 +184,7 @@ export const MCPServerProvider: React.FC<{ children: ReactNode }> = ({
       availableTools,
       isConnecting,
       serverStatus,
+      getAvailableTools,
       connectServers,
       executeToolCall,
     ],

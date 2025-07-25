@@ -1,4 +1,4 @@
-import React, { createContext, useCallback, useEffect, useState } from "react";
+import React, { createContext, useCallback, useEffect, useRef, useState } from "react";
 import { useAIService } from "../hooks/use-ai-service";
 import { useMCPServer } from "../hooks/use-mcp-server";
 import { StreamableMessage } from "../lib/ai-service";
@@ -7,6 +7,7 @@ import { useAssistantContext } from "./AssistantContext";
 export interface ChatContextType {
   messages: StreamableMessage[];
   addMessage: (message: StreamableMessage) => void;
+  getMessages: () => StreamableMessage[];
   isLoading: boolean;
   error: Error | null;
   submit: (messages?: StreamableMessage[]) => Promise<StreamableMessage>;
@@ -24,6 +25,7 @@ export const ChatContextProvider: React.FC<ChatProviderProps> = ({
   children,
 }) => {
   const [messages, setMessages] = useState<StreamableMessage[]>([]);
+  const messagesRef = useRef(messages);
   const {
     error,
     isLoading,
@@ -32,6 +34,10 @@ export const ChatContextProvider: React.FC<ChatProviderProps> = ({
   } = useAIService();
   const { currentAssistant } = useAssistantContext();
   const { connectServers } = useMCPServer();
+
+  useEffect(() => {
+    messagesRef.current = messages;
+  }, [messages]);
 
   useEffect(() => {
     if (currentAssistant) {
@@ -58,17 +64,21 @@ export const ChatContextProvider: React.FC<ChatProviderProps> = ({
     setMessages((prev) => [...prev, message]);
   }, []);
 
+  const getMessages = useCallback(() => {
+    return messagesRef.current;
+  },[]);
+
   const submit = useCallback(
     async (messageToAdd?: StreamableMessage[]) => {
       const newMessages = messageToAdd
-        ? [...messages, ...messageToAdd]
-        : messages;
+        ? [...messagesRef.current, ...messageToAdd]
+        : messagesRef.current;
       if (messageToAdd) {
         setMessages(newMessages);
       }
       return await triggerAIService(newMessages);
     },
-    [messages, triggerAIService],
+    [triggerAIService],
   );
 
   return (
@@ -76,6 +86,7 @@ export const ChatContextProvider: React.FC<ChatProviderProps> = ({
       value={{
         messages,
         addMessage,
+        getMessages,
         isLoading,
         error,
         submit,

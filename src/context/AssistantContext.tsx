@@ -2,9 +2,11 @@ import { createId } from "@paralleldrive/cuid2";
 import {
   createContext,
   ReactNode,
+  useCallback,
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 import { useAsyncFn } from "react-use";
@@ -20,6 +22,7 @@ const DEFAULT_PROMPT =
 interface AssistantContextType {
   assistants: Assistant[];
   currentAssistant: Assistant | null;
+  getCurrentAssistant: () => Assistant|null;
   setCurrentAssistant: (assistant: Assistant | null) => void;
   saveAssistant: (
     assistant: Partial<Assistant>,
@@ -55,6 +58,7 @@ export const AssistantContextProvider = ({
   const [currentAssistant, setCurrentAssistant] = useState<Assistant | null>(
     null,
   );
+  const currentAssistantRef = useRef(currentAssistant);
   const [{ value: assistants, loading, error }, loadAssistants] =
     useAsyncFn(async () => {
       let fetchedAssistants = await dbService.assistants.getPage(0, -1);
@@ -71,6 +75,10 @@ export const AssistantContextProvider = ({
   useEffect(() => {
     loadAssistants();
   }, [loadAssistants]);
+
+  useEffect(() => {
+    currentAssistantRef.current = currentAssistant;
+  }, [currentAssistant]);
 
   useEffect(() => {
     if (!loading && assistants) {
@@ -150,6 +158,10 @@ export const AssistantContextProvider = ({
     [loadAssistants],
   );
 
+  const getCurrentAssistant = useCallback(() => {
+    return currentAssistantRef.current;
+  }, []);
+
   logger.info("assistant context : ", { assistants: assistants?.length, error });
 
   const contextValue: AssistantContextType = useMemo(
@@ -157,6 +169,7 @@ export const AssistantContextProvider = ({
       assistants: assistants || [],
       currentAssistant,
       setCurrentAssistant,
+      getCurrentAssistant,
       saveAssistant,
       deleteAssistant,
       error: error ?? null,
@@ -165,6 +178,7 @@ export const AssistantContextProvider = ({
       assistants,
       currentAssistant,
       setCurrentAssistant,
+      getCurrentAssistant,
       saveAssistant,
       deleteAssistant,
       error,
