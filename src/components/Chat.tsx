@@ -1,30 +1,33 @@
-
-
 import { createId } from "@paralleldrive/cuid2";
 import React, { useEffect, useRef, useState, useMemo } from "react";
 import { useAssistantContext } from "../context/AssistantContext";
 import { useChatContext } from "../hooks/use-chat";
 import { useMCPServer } from "../hooks/use-mcp-server";
 import { useLocalTools } from "../context/LocalToolContext";
-import { StreamableMessage, Assistant } from "../types/chat";
+import { StreamableMessage } from "../types/chat";
 import { getLogger } from "../lib/logger";
 import AssistantManager from "./AssistantManager";
-import { Button, CompactModelPicker, FileAttachment, Input } from "./ui";
+import { FileAttachment, Input } from "./ui";
 import ToolsModal from "./ToolsModal";
 import MessageBubble from "./MessageBubble";
 import { ToolCaller } from "./orchestrators/ToolCaller";
-import MultiAgentOrchestrator from "./orchestrators/MultiAgentOrchestrator";
+import TerminalHeader from "./TerminalHeader";
+import { Button } from "./ui";
 
 const logger = getLogger("Chat");
 
 interface ChatProps {
   children?: React.ReactNode;
+  showAssistantManager: boolean;
+  setShowAssistantManager: (show: boolean) => void;
 }
 
-export default function Chat({ children }: ChatProps) {
-  const [mode, setMode] = useState<"chat" | "agent">("agent");
-  const [showAssistantManager, setShowAssistantManager] = useState(false);
-  const { assistants, currentAssistant, setCurrentAssistant } = useAssistantContext();
+export default function Chat({
+  children,
+  showAssistantManager,
+  setShowAssistantManager,
+}: ChatProps) {
+  const { currentAssistant } = useAssistantContext();
   const [showToolsDetail, setShowToolsDetail] = useState(false);
   const [attachedFiles, setAttachedFiles] = useState<
     { name: string; content: string }[]
@@ -36,7 +39,15 @@ export default function Chat({ children }: ChatProps) {
     [mcpTools, localTools],
   );
   const [input, setInput] = useState("");
-  const { submit, isLoading, messages, currentSession, startNewSession } = useChatContext();
+  const { submit, isLoading, messages, currentSession } = useChatContext();
+
+  // Since ChatContainer ensures currentSession exists before rendering Chat,
+  // we can safely assert it's not null here
+  if (!currentSession) {
+    throw new Error(
+      "Chat component should only be rendered when currentSession exists",
+    );
+  }
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -84,7 +95,6 @@ export default function Chat({ children }: ChatProps) {
     setAttachedFiles((prev) => [...prev, ...newAttachedFiles]);
     e.target.value = "";
   };
-
   const removeAttachedFile = (index: number) => {
     setAttachedFiles((prev) => prev.filter((_, i) => i !== index));
   };
@@ -120,92 +130,19 @@ export default function Chat({ children }: ChatProps) {
     }
   };
 
-  const handleAssistantSelect = (assistant: Assistant) => {
-    setCurrentAssistant(assistant);
-    startNewSession([assistant], "single", assistant.name);
-  };
-
-  if (!currentSession) {
-    return (
-      <div className="h-full w-full flex flex-col items-center justify-center bg-black text-green-400 font-mono p-4">
-        <h2 className="text-2xl font-bold mb-6">Select an Assistant to Start a Chat</h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 w-full max-w-4xl">
-          {assistants.map((assistant) => (
-            <div
-              key={assistant.id}
-              className="bg-gray-800 border border-gray-700 rounded-lg p-4 cursor-pointer hover:border-green-400 transition-colors"
-              onClick={() => handleAssistantSelect(assistant)}
-            >
-              <h3 className="text-lg font-semibold text-green-300">{assistant.name}</h3>
-              <p className="text-sm text-gray-400 mt-2 line-clamp-3">{assistant.systemPrompt}</p>
-            </div>
-          ))}
-        </div>
-        <Button
-          onClick={() => setShowAssistantManager(true)}
-          className="mt-8 bg-gray-800 border border-gray-600 text-gray-400 hover:bg-gray-700"
-        >
-          Manage Assistants
-        </Button>
-        {showAssistantManager && (
-          <AssistantManager onClose={() => setShowAssistantManager(false)} />
-        )}
-      </div>
-    );
-  }
-
   return (
     <div className="h-full w-full bg-black text-green-400 font-mono flex flex-col rounded-lg overflow-hidden shadow-2xl shadow-green-400/30">
-      {/* Terminal Header */}
-      <div className="bg-gray-900 px-4 py-3 flex items-center justify-between border-b border-gray-700 flex-shrink-0">
-        <div className="flex items-center gap-4">
-          <div className="flex gap-2">
-            <div className="w-3 h-3 rounded-full bg-red-500"></div>
-            <div className="w-3 h-3 rounded-full bg-yellow-500"></div>
-            <div className="w-3 h-3 rounded-full bg-green-500"></div>
-          </div>
-          <div className="text-sm text-gray-500">mcp-agent@terminal ~ %</div>
-        </div>
-        {currentSession && (
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-gray-400">Session:</span>
-            <span className="text-sm text-green-400">
-              {currentSession.name} ({currentSession.type})
-            </span>
-          </div>
-        )}
-      </div>
-
-      {/* Mode Switcher */}
-      <div className="bg-gray-950 px-4 py-2 border-b border-gray-700 flex-shrink-0">
-        <div className="flex justify-between items-center">
-          <div className="flex gap-2">
-            <button
-              className={`text-xs px-2 py-1 rounded ${mode === "chat" ? "bg-green-700 text-white" : "bg-gray-800 text-green-400"}`}
-              onClick={() => setMode("chat")}
-            >
-              [chat]
-            </button>
-            <button
-              className={`text-xs px-2 py-1 rounded ${mode === "agent" ? "bg-green-700 text-white" : "bg-gray-800 text-green-400"}`}
-              onClick={() => setMode("agent")}
-            >
-              [agent]
-            </button>
-          </div>
-          <button
-            className="text-xs px-2 py-1 rounded bg-gray-800 text-green-400 hover:bg-green-700 hover:text-white"
-            onClick={() => setShowAssistantManager(true)}
-          >
-            [manage-assistants]
-          </button>
-        </div>
-      </div>
-
-      {/* Model Picker */}
-      <div className="bg-gray-950 px-4 py-3 border-b border-gray-700 flex-shrink-0">
-        <CompactModelPicker className="" />
-      </div>
+      <TerminalHeader
+        currentSessionName={currentSession.name || ""}
+        currentSessionType={currentSession.type || ""}
+      >
+        <button
+          className="text-xs px-2 py-1 rounded bg-gray-800 text-green-400 hover:bg-green-700 hover:text-white"
+          onClick={() => setShowAssistantManager(true)}
+        >
+          [manage-assistants]
+        </button>
+      </TerminalHeader>
 
       {/* Messages Area - Fills space between model picker and bottom UI */}
       <div className="flex-1 flex flex-col min-h-0">
@@ -214,7 +151,7 @@ export default function Chat({ children }: ChatProps) {
             <MessageBubble
               key={m.id}
               message={m}
-              currentAssistantName={currentSession?.assistants[0]?.name}
+              currentAssistantName={currentSession?.assistants[0]?.name || ""}
             />
           ))}
           {isLoading && (
@@ -326,7 +263,6 @@ export default function Chat({ children }: ChatProps) {
         onClose={() => setShowToolsDetail(false)}
       />
       <ToolCaller />
-      <MultiAgentOrchestrator />
       {children}
     </div>
   );

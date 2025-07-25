@@ -1,81 +1,74 @@
-# Refactoring Plan - UI 개편
+# Refactoring Plan - 기능 중복 제거 및 Chat Modality 지원 구조 개선
 
-## Sidebar를 통해 기능 확장
+## Chat의 과중한 복잡도 개선
 
-- Chat
-  - 단일 Assitant와 대화를 제공
-  - 선택 시 Main Content에 Assistant 선택 옵션 표시
-  - 여기서 Assistant를 선택하면 대화 세션이 시작됨
-    - 세션에는 대상 Assistant와 Messages 등을 포함하는 정보 구조
-- Group
-  - Group 생성 기능 및 기존 생성된 Group 선택 가능
-  - Group 생성 선택 시 Group 생성을 위한 Modal View 표시
-    - 해당 Modal View에는 Assistants List에서 Assistants를 선택하여 Group을 생성할 수 있음
-  - 기존 Group 선택 시 Group Session을 시작
-    - 위 Chat과 호환되는 Session 구조, 관리되는 Assistant가 복수가되는 것만 차이가 았음
-- History
-  - 기존의 대화 (세션) list를 표시
-  - Scroll down해서 hit bottom 하면 load more 해서 page를 더 가져옴
-- 최하단에 Settings
-  - 클릭하면 Setting Modal을 표시
+- `./src/components/Chat.tsx`에 Assistant를 선택하는 View가 포함되어 있다 이것을 별도의 View로 분리
+  - Assistant를 선택해서 Single Session을 시작하는 별도의 View (이름은 적당히)
+  - Header 요소를 별도로 분리하고 Agent Mode Toggle Button 제공
+  - ToolCaller를 제외하고 MultiAgentOrchestrator는 외부에서 삽입하는 방식으로 변경하여 Chat의 기능을 Composition 하는 접근으로 변경
+  - 또한 이렇게 될경우 `./src/components/orchestrators/MultiAgentOrchestrator.tsx`에서는 활성화 Toggle이 더이상 필요 없이 해당 Component가 <Chat> ... </Chat>에 둘러 쌓여 있을 때 무조건 Multi-Agent 활성화 시키면 되는것
+- 위와 같이 작업이 되면 Chat은 Tool Call 및 대화 기본 기능에 충실한 구조로 되고 이후 기능 확장은 아래와 같이 된다.
+  - Single Assistant Chatting
 
----
+    ```tsx
+    function SingleAssistantChat() {
+    ...
+      return (
+        <Chat>
+          {isAgentMode && <Reflection />}
+        </Chat>
+      )
+    }
 
-## Clarification Questions:
+    ```
 
-1.  **Assistant Selection (Chat):**
-    - When an Assistant is selected to start a new session, where will the "Assistant selection option" be displayed in the Main Content? Is this a temporary UI element that disappears once a session starts, or is it part of the persistent chat interface?
-      - ans) 보통 sidebar과 화면의 좌측에 위치하고 collapsible하게 구성되면 나머지 공간에 사용자의 주요한 interaction을 다루는 영역 즉, 화면의 대부분을 차지하는 공간
+  - Multi Agent Chatting
 
-      ```ascii
-      |----- top nav. (optional) ----|
-      | - |                          |
-      | - |                          |
-      | s |                          |
-      | i | ----- main content ----- |
-      | d |                          |
-      | e |                          |
-      | - |                          |
-      | - |                          |
-      ```
+  ```tsx
+  function MultiAgentChat() {
+    return (
+      <Chat>
+        <MultiAgentOrchestrator />
+      </Chat>
+    )
+  }
+  ```
 
-    - What specific information should the "session information structure" (대상 Assistant와 Messages 등을 포함하는 정보 구조) contain beyond the Assistant and messages? For example, does it need a session ID, creation timestamp, or other metadata?
-      - ans) session에 사용자와 대화를 위한 모든 정보
-        - assistant(s) 복수일 수 있음, Group (Multi Agent Orchestration 지원)
-        - id, createdAt, updatedAt
-        - type: "single" | "group"
-        - session은 생성과 삭제만 있고 변경 불가
-        - messages 이건 별도의 table로
-          - findMessagesBySessionId()로 가져올 수 있도록 `StreamableMessage`에 sessionId 값을 추가
+## 작업할 내용
 
-        ```ts
-        interface Session {
-          id: string;
-          assistants: Assistant[];
-          ...
-        }
-        ```
+- Chat.tsx
+  - header 및 chat / agent 모드 toggle 추출하여 이동.
+  - SingleAssistant 시작을 위해 Assistant 선택하는 View를 추출하여 별도의 코드로 관리.
+- MultiAgentOrchestrator.tsx
+  - toggle 제거
 
-2.  **Group Creation and Session:**
-    - For "Group 생성 선택 시 Group 생성을 위한 Modal View 표시," what are the minimum required fields for creating a group (e.g., group name, description)?
-      - ans) group name, description, assistants
-    - When selecting Assistants from the "Assistants List" for group creation, how will the user interact with this list (e.g., multi-select checkboxes, drag-and-drop)?
-      - ans) list에 각 item 마다 checkbox가 있고, multi-select checkboxes 방식
-        - item에 checkbox을 선택하면, 선택된 assistants list에 표시되서 전체 선택이 어떻게 구성되는지 preview할 수 있게함
-        - assistant name을 기준으로 search (list filters) 할 수 있는 기능을 제공
-    - Regarding "위 Chat과 호환되는 Session 구조, 관리되는 Assistant가 복수가되는 것만 차이가 았음," how will messages be routed or attributed within a group session if multiple Assistants are involved? Will there be a mechanism to specify which Assistant responds, or will all Assistants process messages concurrently?
-      - ans) message는 sessionId에 의해 mapping이 되며 이를 통해 lookup하여 히스토리를 가져올 수 있음
+## Clarification Questions
 
-3.  **History:**
-    - What criteria will be used to sort the "기존의 대화 (세션) list"? (e.g., last active, creation date, alphabetical by Assistant/Group name)?
-      - ans) last active
-    - What is the expected "page size" for loading more history items when scrolling down?
-      - 20
+1.  **New Component for Assistant Selection**: What should the new component for assistant selection be named (e.g., `AssistantSelectionView.tsx`, `StartChatView.tsx`) and where should it be located (e.g., `src/components/` or a new subdirectory)?
+=> `StartSingleChatView.tsx` would be better distinguish from group chat, and be located in `src/components/`
+2.  **Extracted Header Component**: What should the extracted header component be named (e.g., `ChatHeader.tsx`, `TerminalHeader.tsx`) and where should it be located?
+=> `TerminalHeader.tsx` would be fine, and can be located in `src/components/`
+3.  **Extracted Mode Switcher Component**: What should the extracted mode switcher component be named (e.g., `ModeSwitcher.tsx`, `ChatModeToggle.tsx`) and where should it be located?
+=> 내 생각에는 별도로 Component를 만드는 것 보다는 TerminalHeader에서 상태를 관리하고 Context를 써서 하위 component에 전달하면 될 것 같아 예를 들어서 대충 아래와 같은 방식
+   ```tsx
+   <TerminalHeader>
+     ...
+     <SingleAgentChat/>
+   </TerminalHeader>
 
-4.  **General UI/UX:**
-    - Will the sidebar itself be collapsible or resizable?
-      - collapsible would be enough, resizablility is too much, we don't need it
-    - Are there any specific visual cues or animations expected when switching between Chat, Group, and History views, or when opening the Settings modal?
-      - I have no idea, but want to have one suitable to terminal-like look
-    - How will the "terminal-like" look and feel be consistently applied across these new features, especially for new UI elements like the Group creation modal and history list items?
-      - black bg, greenish text and border, etc.
+   function SingleAgentChat() {
+     const { isAgentMode } = useTerminalHeaderContext();
+     return (
+       <Chat>
+         {isAgentMode && <Reflection />}
+       </Chat>
+     )
+   }
+
+   ```
+4.  **`MultiAgentOrchestrator` Insertion**: The plan states "MultiAgentOrchestrator는 외부에서 삽입하는 방식으로 변경하여 Chat의 기능을 Composition 하는 접근으로 변경". This implies `MultiAgentOrchestrator` will be passed as `children` to `Chat`. However, `Chat.tsx` already has `children?: React.ReactNode;` in its props. The current `MultiAgentOrchestrator` component also has its own internal logic for activation/deactivation. How should the `MultiAgentOrchestrator` be composed with `Chat`? Should `Chat` still manage the `mode` state (`chat` | `agent`) or should that be handled by the parent component that renders `Chat` and `MultiAgentOrchestrator`?
+=> 맞아, 지금 Chat.tsx에 기본으로 추가되어 있는 것을 분리하라는 것이고, 이것은 Chat.tsx가 SingleAssistantChat에서 사용될 때 이런 기능은 필요 없기 때문이지, 그리고 MultiAgentOrchestrator를 사용하게 되면 기본이 Agent모드가 된다고 보면되겠지, 따라서 더이상의 `mode`는 필요 없는거야.
+5.  **`Reflection` Component**: The example for `SingleAssistantChat` includes `<Reflection />`. Is this an existing component, or a placeholder for a future feature? If it's existing, where is it located? If it's a placeholder, should it be created as an empty component for now?
+=> 아직 구현이 안되어 있고, SingleAssistantChat에서 Autonomous Task 수행을 지원하기 위한 reflection 하고 다시 계획을 수립하고 작업을 진행하던가 아니면 report to user하던가 2가지 동작을 하도록 할 거야. 우선 placeholder만 만들어 두고 구현은 아직 필요 없어. 다음 단계의 작업으로 우선 놔두자.
+6.  **`Chat` Component's Role**: After refactoring, what will be the primary responsibility of the `Chat` component? Will it solely focus on message display and input, or will it still manage some session-related logic?
+=> 위에 제안한 변경 사항을 거치면 순수하게 message handling 관련 코드만 남게 될 거라고 예상하고 있어, session 관련 코드 특히 session을 시작하기 위한 assistant 선택 같은 것은 별도의 컴포넌트로 뺄꺼잖아.
