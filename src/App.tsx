@@ -1,5 +1,5 @@
 import { useState } from "react";
-import Chat from "./components/Chat";
+import ChatContainer from "./components/ChatContainer";
 import SettingsModal from "./components/SettingsModal";
 import { ChatContextProvider } from "./context/ChatContext";
 import "./globals.css";
@@ -14,24 +14,25 @@ import Group from "./components/Group"; // New import
 import History from "./components/History"; // New import
 import GroupCreationModal from "./components/GroupCreationModal"; // New import
 
-type CurrentView = 'chat' | 'group' | 'history';
+type CurrentView = "chat" | "group" | "history";
 
 function App() {
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
-  const [currentView, setCurrentView] = useState<CurrentView>('chat');
-  const [isGroupCreationModalOpen, setIsGroupCreationModalOpen] = useState(false); // New state
+  const [currentView, setCurrentView] = useState<CurrentView>("chat");
+  const [isGroupCreationModalOpen, setIsGroupCreationModalOpen] =
+    useState(false); // New state
 
   const renderMainContent = () => {
     switch (currentView) {
-      case 'chat':
-        return <Chat />;
-      case 'group':
+      case "chat":
+        return <ChatContainer />;
+      case "group":
         return <Group />;
-      case 'history':
+      case "history":
         return <History />;
       default:
-        return <Chat />;
+        return <ChatContainer />;
     }
   };
 
@@ -47,17 +48,25 @@ function App() {
                   {/* Sidebar */}
                   <Sidebar
                     isCollapsed={isSidebarCollapsed}
-                    onToggleCollapse={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
+                    onToggleCollapse={() =>
+                      setIsSidebarCollapsed(!isSidebarCollapsed)
+                    }
                     onOpenSettings={() => setIsSettingsModalOpen(true)}
                     onViewChange={setCurrentView}
                     currentView={currentView}
-                    onOpenGroupCreationModal={() => setIsGroupCreationModalOpen(true)} // Pass new prop
+                    onOpenGroupCreationModal={() =>
+                      setIsGroupCreationModalOpen(true)
+                    } // Pass new prop
                   />
 
                   {/* Main Content Area */}
-                  <main className={`flex-1 flex flex-col overflow-hidden ${isSidebarCollapsed ? "ml-0" : "ml-64"}`}>
+                  <main
+                    className={`flex-1 flex flex-col overflow-hidden ${isSidebarCollapsed ? "ml-0" : "ml-64"}`}
+                  >
                     <header className="flex justify-between items-center p-4 border-b border-gray-700 flex-shrink-0">
-                      <h1 className="text-xl font-bold text-green-400">MCP Agent</h1>
+                      <h1 className="text-xl font-bold text-green-400">
+                        MCP Agent
+                      </h1>
                     </header>
                     <div className="flex-1 overflow-auto">
                       {renderMainContent()}

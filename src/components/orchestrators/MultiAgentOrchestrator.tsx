@@ -1,10 +1,10 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef } from 'react';
 import { useAssistantContext } from '../../context/AssistantContext';
 import { LocalService, useLocalTools } from '../../context/LocalToolContext';
 import { useChatContext } from '../../hooks/use-chat';
 import { createId } from '@paralleldrive/cuid2';
 import { Assistant } from '../../types/chat';
-import { Button } from '../ui';
+
 
 const MULTI_AGENT_ORCHESTRATOR_ASSISTANT_ID = 'multi-agent-orchestrator';
 const MULTI_AGENT_SERVICE = "multi-agent-orchestrator-service";
@@ -35,15 +35,12 @@ interface PlanItem {
   complete: boolean;
 }
 
-const MultiAgentOrchestrator: React.FC = () => {
+export const MultiAgentOrchestrator: React.FC = () => {
   const { currentAssistant, setCurrentAssistant, assistants } = useAssistantContext();
   const { registerService, unregisterService } = useLocalTools();
   const { addMessage, submit, currentSession } = useChatContext();
 
-  const [isExpanded, setIsExpanded] = useState(false);
   const plan = useRef<PlanItem[]>([]);
-
-  const isActive = currentAssistant?.id === MULTI_AGENT_ORCHESTRATOR_ASSISTANT_ID;
 
   // ✨ Clean, stable tool handlers using the simpler useStableHandler
   const handlePromptToUser = useCallback(({ prompt }: PromptToUserInput) => {
@@ -226,79 +223,45 @@ Available assistants: ${assistants.map(a => `${a.id}: ${a.name}`).join(', ')}`,
     };
   }, [localService]); // localService is now stable
 
-  const handleActivateOrchestrator = () => {
+  useEffect(() => {
     setCurrentAssistant(multiAgentOrchestratorAssistant);
-  };
-
-  const handleDeactivateOrchestrator = () => {
-    // Find default assistant or set to null
-    const defaultAssistant = assistants.find(a => a.isDefault) || null;
-    setCurrentAssistant(defaultAssistant);
-    handleClearPlan(); // Clear plan when deactivating
-  };
-
-
-  if (!isActive) {
-    return (
-      <div className="p-2 border-t border-gray-700 flex justify-center">
-        <Button
-          onClick={handleActivateOrchestrator}
-          className="bg-blue-600 hover:bg-blue-700 text-white"
-        >
-          Activate Multi-Agent Orchestrator
-        </Button>
-      </div>
-    );
-  }
+  }, [multiAgentOrchestratorAssistant, setCurrentAssistant]);
 
   return (
     <div className="multi-agent-orchestrator-container p-4 border-t border-gray-700 bg-gray-800 text-white rounded-lg shadow-lg mb-4">
-      <div className="flex justify-between items-center cursor-pointer" onClick={() => setIsExpanded(!isExpanded)}>
-        <h3 className="text-lg font-semibold flex items-center">
-          Multi-Agent Orchestrator Active
-        </h3>
-        <Button
-          onClick={handleDeactivateOrchestrator}
-          className="bg-red-600 hover:bg-red-700 text-white text-sm py-1 px-3"
-        >
-          Deactivate
-        </Button>
-      </div>
+      <h3 className="text-lg font-semibold flex items-center">
+        Multi-Agent Orchestrator Active
+      </h3>
+      <div className="mt-4">
+        <div className="text-sm text-gray-300 mb-3">
+          The Multi-Agent Orchestrator is coordinating specialized assistants to handle complex tasks.
+          Current assistant: <span className="font-semibold text-blue-300">{currentAssistant?.name}</span>
+        </div>
 
-      {isExpanded && (
-        <div className="mt-4">
-          <div className="text-sm text-gray-300 mb-3">
-            The Multi-Agent Orchestrator is coordinating specialized assistants to handle complex tasks.
-            Current assistant: <span className="font-semibold text-blue-300">{currentAssistant?.name}</span>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+          <div className="p-3 bg-gray-700 rounded-lg">
+            <h4 className="text-sm font-semibold mb-2">Available Assistants</h4>
+            <div className="text-xs text-gray-300 space-y-1">
+              {assistants.map(assistant => (
+                <div key={assistant.id} className={`p-1 rounded ${assistant.id === currentAssistant?.id ? 'bg-blue-600' : ''
+                  }`}>
+                  {assistant.name} ({assistant.id})
+                </div>
+              ))}
+            </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-            <div className="p-3 bg-gray-700 rounded-lg">
-              <h4 className="text-sm font-semibold mb-2">Available Assistants</h4>
-              <div className="text-xs text-gray-300 space-y-1">
-                {assistants.map(assistant => (
-                  <div key={assistant.id} className={`p-1 rounded ${assistant.id === currentAssistant?.id ? 'bg-blue-600' : ''
-                    }`}>
-                    {assistant.name} ({assistant.id})
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <div className="p-3 bg-gray-700 rounded-lg">
-              <h4 className="text-sm font-semibold mb-2">Orchestrator Tools</h4>
-              <div className="text-xs text-gray-300 space-y-1">
-                <div>• Prompt user for input</div>
-                <div>• Switch between assistants</div>
-                <div>• Manage task plans</div>
-                <div>• Report results</div>
-              </div>
+          <div className="p-3 bg-gray-700 rounded-lg">
+            <h4 className="text-sm font-semibold mb-2">Orchestrator Tools</h4>
+            <div className="text-xs text-gray-300 space-y-1">
+              <div>• Prompt user for input</div>
+              <div>• Switch between assistants</div>
+              <div>• Manage task plans</div>
+              <div>• Report results</div>
             </div>
           </div>
         </div>
-      )}
+      </div>
     </div>
   );
 };
-
-export default MultiAgentOrchestrator;
