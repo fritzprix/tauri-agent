@@ -57,13 +57,15 @@ export const AssistantContextProvider = ({
   );
   const [{ value: assistants, loading, error }, loadAssistants] =
     useAsyncFn(async () => {
-      let fetchedAssistants = await dbService.getAssistants();
-      if (fetchedAssistants.length === 0) {
+      let fetchedAssistants = await dbService.assistants.getPage(0, -1);
+      logger.info("fetched assistants : ", {fetchedAssistants});
+      if (fetchedAssistants.totalItems === 0) {
         const defaultAssistant = getDefaultAssistant();
-        await dbService.upsertAssistant(defaultAssistant);
-        fetchedAssistants = [defaultAssistant];
-      }
-      return fetchedAssistants;
+        await dbService.assistants.upsert(defaultAssistant);
+        return [defaultAssistant];
+      } 
+
+      return fetchedAssistants.items;
     }, []);
 
   useEffect(() => {
@@ -78,7 +80,7 @@ export const AssistantContextProvider = ({
     }
   }, [loading, assistants]);
 
-  const [{}, saveAssistant] = useAsyncFn(
+  const [{ }, saveAssistant] = useAsyncFn(
     async (
       editingAssistant: Partial<Assistant>,
       mcpConfigText: string,
@@ -112,7 +114,7 @@ export const AssistantContextProvider = ({
           updatedAt: new Date(),
         };
 
-        await dbService.upsertAssistant(assistantToSave);
+        await dbService.assistants.upsert(assistantToSave);
 
         if (currentAssistant?.id === assistantToSave.id || !currentAssistant) {
           setCurrentAssistant(assistantToSave);
@@ -130,11 +132,11 @@ export const AssistantContextProvider = ({
     [currentAssistant, loadAssistants],
   );
 
-  const [{}, deleteAssistant] = useAsyncFn(
+  const [{ }, deleteAssistant] = useAsyncFn(
     async (assistantId: string) => {
       if (window.confirm("이 역할을 삭제하시겠습니까?")) {
         try {
-          await dbService.deleteAssistant(assistantId);
+          await dbService.assistants.delete(assistantId);
           await loadAssistants();
           // The useEffect hook will handle setting a new currentAssistant
         } catch (error) {
@@ -148,7 +150,7 @@ export const AssistantContextProvider = ({
     [loadAssistants],
   );
 
-  logger.info("assistant context : ", { assistants: assistants?.length });
+  logger.info("assistant context : ", { assistants: assistants?.length, error });
 
   const contextValue: AssistantContextType = useMemo(
     () => ({

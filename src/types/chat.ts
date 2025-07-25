@@ -1,4 +1,3 @@
-import { Assistant as DbAssistant } from "../lib/db";
 import { MCPTool } from "../lib/tauri-mcp-client";
 
 export interface Message {
@@ -22,8 +21,24 @@ export interface ToolCall {
 
 export interface StreamableMessage extends Message {}
 
-export interface Assistant extends DbAssistant {
+export interface Assistant {
+  id: string;
+  name: string;
+  systemPrompt: string;
+  mcpConfig: {
+    mcpServers?: Record<
+      string,
+      {
+        command: string;
+        args?: string[];
+        env?: Record<string, string>;
+      }
+    >;
+  };
   localServices?: string[];
+  isDefault: boolean;
+  createdAt: Date;
+  updatedAt: Date;
 }
 
 export interface Tool extends MCPTool {

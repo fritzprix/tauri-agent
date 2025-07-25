@@ -22,7 +22,7 @@
     3. **setPlan(items: string[])**
        - 체크리스트 형태의 계획을 설정합니다.
        - 모든 항목이 완료되지 않은 상태에서 다시 호출되면, 아직 완료되지 않았음을 알립니다.
-    4. **checkDone(index: number)**
+    4. **checkPlanItem(index: number)**
        - 계획의 특정 항목을 완료로 표시합니다.
     5. **clearPlan()**
        - 계획을 취소하고 제거합니다.

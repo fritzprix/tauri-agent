@@ -1,116 +1,224 @@
 import Dexie, { Table } from "dexie";
+import { Assistant } from "../types/chat";
 
 // --- TYPE DEFINITIONS ---
-// These types are used within the application logic.
-export interface Assistant {
-  id: string;
-  name: string;
-  systemPrompt: string;
-  mcpConfig: {
-    mcpServers?: Record<
-      string,
-      {
-        command: string;
-        args?: string[];
-        env?: Record<string, string>;
-      }
-    >;
-  };
-  isDefault: boolean;
-  createdAt: Date;
-  updatedAt: Date;
-}
-
-export interface Setting {
+export interface DatabaseObject {
   key: string;
   value: any;
+  createdAt?: Date;
+  updatedAt?: Date;
 }
 
-class MCPAgentDB extends Dexie {
+export interface Page<T> {
+  items: T[];
+  page: number;
+  pageSize: number;
+  totalItems: number;
+  hasNextPage: boolean;
+  hasPreviousPage: boolean;
+}
+
+export interface CRUD<T> {
+  upsert: (object: T) => Promise<void>;
+  read: (key: string) => Promise<T | undefined>;
+  delete: (key: string) => Promise<void>;
+  getPage: (page: number, pageSize: number) => Promise<Page<T>>; // if pageSize is -1, return all items
+  count: () => Promise<number>;
+}
+
+export interface DatabaseService {
+  assistants: CRUD<Assistant>;
+  objects: CRUD<DatabaseObject>;
+}
+
+class LocalDatabase extends Dexie {
+  private static instance: LocalDatabase;
+  public static getInstance(): LocalDatabase {
+    if (!LocalDatabase.instance) {
+      LocalDatabase.instance = new LocalDatabase();
+    }
+    return LocalDatabase.instance;
+  }
+
   assistants!: Table<Assistant, string>;
-  settings!: Table<Setting, string>;
+  objects!: Table<DatabaseObject, string>;
 
   constructor() {
     super("MCPAgentDB");
+    
+    // Version 1: Original schema
     this.version(1).stores({
-      assistants: "&id", // Primary key 'id'
-      settings: "&key", // Primary key 'key'
+      assistants: "&id",
+      objects: "&key",
+    });
+    
+    // Version 2: Add proper indexes
+    this.version(2).stores({
+      assistants: "&id, createdAt, updatedAt, name",
+      objects: "&key, createdAt, updatedAt", // Added timestamp indexes
+    }).upgrade(async (tx) => {
+      console.log("Upgrading database to version 2 - adding indexes");
+      
+      const now = new Date();
+      
+      // Fix assistants
+      const assistants = await tx.table('assistants').toArray();
+      for (const assistant of assistants) {
+        if (!assistant.createdAt) assistant.createdAt = now;
+        if (!assistant.updatedAt) assistant.updatedAt = now;
+        await tx.table('assistants').put(assistant);
+      }
+      
+      // Fix objects  
+      const objects = await tx.table('objects').toArray();
+      for (const obj of objects) {
+        if (!obj.createdAt) obj.createdAt = now;
+        if (!obj.updatedAt) obj.updatedAt = now;
+        await tx.table('objects').put(obj);
+      }
     });
   }
 }
 
-class DBService {
-  private static instance: DBService;
-  private db: MCPAgentDB;
-
-  private constructor() {
-    this.db = new MCPAgentDB();
+// Helper function to create paginated results
+const createPage = <T>(items: T[], page: number, pageSize: number, totalItems: number): Page<T> => {
+  if (pageSize === -1) {
+    return {
+      items,
+      page: 1,
+      pageSize: totalItems,
+      totalItems,
+      hasNextPage: false,
+      hasPreviousPage: false
+    };
   }
 
-  public static getInstance(): DBService {
-    if (!DBService.instance) {
-      DBService.instance = new DBService();
-    }
-    return DBService.instance;
-  }
+  return {
+    items,
+    page,
+    pageSize,
+    totalItems,
+    hasNextPage: (page * pageSize) < totalItems,
+    hasPreviousPage: page > 1
+  };
+};
 
-  /**
-   * Create a new assistant. Fails if the assistant already exists.
-   */
-  public async createAssistant(assistant: Assistant): Promise<void> {
-    try {
-      await this.db.assistants.add(assistant);
-    } catch (error) {
-      if (error instanceof Dexie.ConstraintError) {
-        throw new Error("Assistant already exists");
+export const dbService: DatabaseService = {
+  assistants: {
+    upsert: async (assistant: Assistant) => {
+      const now = new Date();
+      if (!assistant.createdAt) assistant.createdAt = now;
+      assistant.updatedAt = now;
+      await LocalDatabase.getInstance().assistants.put(assistant);
+    },
+    read: async (id: string) => {
+      return LocalDatabase.getInstance().assistants.get(id);
+    },
+    delete: async (id: string) => {
+      await LocalDatabase.getInstance().assistants.delete(id);
+    },
+    getPage: async (page: number, pageSize: number): Promise<Page<Assistant>> => {
+      const db = LocalDatabase.getInstance();
+      const totalItems = await db.assistants.count();
+      
+      if (pageSize === -1) {
+        const items = await db.assistants.orderBy('createdAt').toArray();
+        return createPage(items, page, pageSize, totalItems);
       }
-      throw error;
-    }
-  }
+      
+      const offset = (page - 1) * pageSize;
+      const items = await db.assistants
+        .orderBy('createdAt')
+        .offset(offset)
+        .limit(pageSize)
+        .toArray();
+      
+      return createPage(items, page, pageSize, totalItems);
+    },
+    count: async (): Promise<number> => {
+      return LocalDatabase.getInstance().assistants.count();
+    },
+  },
+  objects: {
+    upsert: async (object: DatabaseObject) => {
+      const now = new Date();
+      if (!object.createdAt) object.createdAt = now;
+      object.updatedAt = now;
+      await LocalDatabase.getInstance().objects.put(object);
+    },
+    read: async (key: string) => {
+      return LocalDatabase.getInstance().objects.get(key);
+    },
+    delete: async (key: string) => {
+      await LocalDatabase.getInstance().objects.delete(key);
+    },
+    getPage: async (page: number, pageSize: number): Promise<Page<DatabaseObject>> => {
+      const db = LocalDatabase.getInstance();
+      const totalItems = await db.objects.count();
+      
+      if (pageSize === -1) {
+        const items = await db.objects.orderBy('createdAt').toArray();
+        return createPage(items, page, pageSize, totalItems);
+      }
+      
+      const offset = (page - 1) * pageSize;
+      const items = await db.objects
+        .orderBy('createdAt')
+        .offset(offset)
+        .limit(pageSize)
+        .toArray();
+      
+      return createPage(items, page, pageSize, totalItems);
+    },
+    count: async (): Promise<number> => {
+      return LocalDatabase.getInstance().objects.count();
+    },
+  },
+};
 
-  /**
-   * Get a single assistant by id.
-   */
-  public async getAssistant(id: string): Promise<Assistant | null> {
-    const assistant = await this.db.assistants.get(id);
-    return assistant || null;
+// Keep the original utility functions
+export const dbUtils = {
+  getAllAssistants: async (): Promise<Assistant[]> => {
+    return LocalDatabase.getInstance().assistants.toArray();
+  },
+  
+  getAllObjects: async (): Promise<DatabaseObject[]> => {
+    return LocalDatabase.getInstance().objects.toArray();
+  },
+  
+  assistantExists: async (id: string): Promise<boolean> => {
+    const count = await LocalDatabase.getInstance().assistants.where('id').equals(id).count();
+    return count > 0;
+  },
+  
+  objectExists: async (key: string): Promise<boolean> => {
+    const count = await LocalDatabase.getInstance().objects.where('key').equals(key).count();
+    return count > 0;
+  },
+  
+  clearAllAssistants: async (): Promise<void> => {
+    await LocalDatabase.getInstance().assistants.clear();
+  },
+  
+  clearAllObjects: async (): Promise<void> => {
+    await LocalDatabase.getInstance().objects.clear();
+  },
+  
+  bulkUpsertAssistants: async (assistants: Assistant[]): Promise<void> => {
+    const now = new Date();
+    assistants.forEach(assistant => {
+      if (!assistant.createdAt) assistant.createdAt = now;
+      assistant.updatedAt = now;
+    });
+    await LocalDatabase.getInstance().assistants.bulkPut(assistants);
+  },
+  
+  bulkUpsertObjects: async (objects: DatabaseObject[]): Promise<void> => {
+    const now = new Date();
+    objects.forEach(obj => {
+      if (!obj.createdAt) obj.createdAt = now;
+      obj.updatedAt = now;
+    });
+    await LocalDatabase.getInstance().objects.bulkPut(objects);
   }
-
-  /**
-   * Upsert an assistant (insert or update).
-   */
-  public async upsertAssistant(assistant: Assistant): Promise<void> {
-    await this.db.assistants.put(assistant);
-  }
-
-  /**
-   * Get all assistants.
-   */
-  public async getAssistants(): Promise<Assistant[]> {
-    return this.db.assistants.toArray();
-  }
-
-  /**
-   * Delete an assistant by id.
-   */
-  public async deleteAssistant(id: string): Promise<void> {
-    await this.db.assistants.delete(id);
-  }
-
-  /**
-   * Save a setting.
-   */
-  public async saveSetting(key: string, value: any): Promise<void> {
-    await this.db.settings.put({ key, value });
-  }
-
-  /**
-   * Get a setting by key.
-   */
-  public async getSetting<T>(key: string): Promise<T | null> {
-    const setting = await this.db.settings.get(key);
-    return setting ? (setting.value as T) : null;
-  }
-}
-
-export const dbService = DBService.getInstance();
+};

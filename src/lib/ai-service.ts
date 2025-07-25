@@ -36,6 +36,7 @@ export enum AIServiceProvider {
 export interface StreamableMessage {
   id: string;
   content: string;
+  assistantId?: string; // Optional, used for tracking in multi-agent scenarios
   role: "user" | "assistant" | "system" | "tool";
   thinking?: string;
   isStreaming?: boolean;

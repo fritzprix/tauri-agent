@@ -11,6 +11,7 @@ import { Button, CompactModelPicker, FileAttachment, Input } from "./ui";
 import ToolsModal from "./ToolsModal";
 import MessageBubble from "./MessageBubble";
 import { ToolCaller } from "./orchestrators/ToolCaller";
+import MultiAgentOrchestrator from "./orchestrators/MultiAgentOrchestrator";
 
 const logger = getLogger("Chat");
 
@@ -288,6 +289,7 @@ export default function Chat({ children }: ChatProps) {
         onClose={() => setShowToolsDetail(false)}
       />
       <ToolCaller />
+      <MultiAgentOrchestrator />
       {children}
     </div>
   );
