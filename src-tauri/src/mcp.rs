@@ -210,7 +210,7 @@ impl MCPServerManager {
         match schema {
             serde_json::Value::Object(obj) => {
                 let mut input_schema = MCPToolInputSchema::default();
-                
+
                 // Extract known fields
                 if let Some(schema_type) = obj.get("type") {
                     if let Some(type_str) = schema_type.as_str() {
@@ -250,7 +250,10 @@ impl MCPServerManager {
 
                 // Store any additional properties
                 for (key, value) in obj {
-                    if !matches!(key.as_str(), "type" | "properties" | "required" | "description" | "title") {
+                    if !matches!(
+                        key.as_str(),
+                        "type" | "properties" | "required" | "description" | "title"
+                    ) {
                         input_schema.additional_properties.insert(key, value);
                     }
                 }
@@ -271,7 +274,7 @@ impl MCPServerManager {
 
         if let Some(connection) = connections.get(server_name) {
             println!("Found connection for server: {}", server_name);
-            
+
             match connection.client.list_all_tools().await {
                 Ok(tools_response) => {
                     println!("Raw tools response: {:?}", tools_response);
@@ -279,11 +282,14 @@ impl MCPServerManager {
 
                     for tool in tools_response {
                         println!("Processing tool: {:?}", tool);
-                        
+
                         // Convert the input schema to our structured format
                         let input_schema_value = serde_json::to_value(tool.input_schema)
                             .unwrap_or_else(|e| {
-                                println!("Warning: Failed to serialize input_schema for tool {}: {}", tool.name, e);
+                                println!(
+                                    "Warning: Failed to serialize input_schema for tool {}: {}",
+                                    tool.name, e
+                                );
                                 serde_json::Value::Object(serde_json::Map::new())
                             });
 
@@ -295,7 +301,10 @@ impl MCPServerManager {
                             input_schema: structured_schema,
                         };
 
-                        println!("Converted tool: {} with schema type: {}", mcp_tool.name, mcp_tool.input_schema.schema_type);
+                        println!(
+                            "Converted tool: {} with schema type: {}",
+                            mcp_tool.name, mcp_tool.input_schema.schema_type
+                        );
                         tools.push(mcp_tool);
                     }
 
@@ -331,7 +340,10 @@ impl MCPServerManager {
                     all_tools.extend(tools);
                 }
                 Err(e) => {
-                    println!("Warning: Failed to get tools from server {}: {}", server_name, e);
+                    println!(
+                        "Warning: Failed to get tools from server {}: {}",
+                        server_name, e
+                    );
                     // Continue with other servers instead of failing completely
                 }
             }

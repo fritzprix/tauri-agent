@@ -33,22 +33,7 @@ export enum AIServiceProvider {
   Empty = "empty",
 }
 
-export interface StreamableMessage {
-  id: string;
-  content: string;
-  role: "user" | "assistant" | "system" | "tool";
-  thinking?: string;
-  isStreaming?: boolean;
-  attachments?: { name: string; content: string }[];
-  tool_calls?: {
-    id: string;
-    type: "function";
-    function: { name: string; arguments: string };
-  }[];
-  tool_use?: { id: string; name: string; input: Record<string, unknown> };
-  function_call?: { name: string; arguments: Record<string, unknown> };
-  tool_call_id?: string;
-}
+import { StreamableMessage } from "../types/chat";
 
 export class AIServiceError extends Error {
   constructor(

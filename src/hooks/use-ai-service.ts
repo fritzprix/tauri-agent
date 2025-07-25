@@ -1,23 +1,18 @@
 import { createId } from "@paralleldrive/cuid2";
 import { useCallback, useMemo, useState } from "react";
-import {
-  AIServiceConfig,
-  AIServiceFactory,
-  StreamableMessage,
-} from "../lib/ai-service";
+import { AIServiceConfig, AIServiceFactory } from "../lib/ai-service";
+import { StreamableMessage } from "../types/chat";
 import { getLogger } from "../lib/logger";
 import { useSettings } from "./use-settings";
 import { useMCPServer } from "./use-mcp-server";
-import { useLocalTools } from "./use-local-tools";
+import { useLocalTools } from "../context/LocalToolContext";
 import { useAssistantContext } from "../context/AssistantContext";
 
 const logger = getLogger("useAIService");
 
 const DEFAULT_SYSTEM_PROMPT = "You are a helpful assistant.";
 
-export const useAIService = (
-  config?: AIServiceConfig,
-) => {
+export const useAIService = (config?: AIServiceConfig) => {
   const {
     value: {
       preferredModel: { model, provider },
@@ -34,24 +29,24 @@ export const useAIService = (
         maxRetries: 3,
         maxTokens: 4096,
       }),
-    [provider, apiKeys, model],
+    [provider, apiKeys, model]
   );
-  const { currentAssistant: assistant } = useAssistantContext();
+  const { getCurrentAssistant } = useAssistantContext();
 
-  const { availableTools: mcpTools } = useMCPServer();
-  const { availableTools: localTools } = useLocalTools();
+  const { getAvailableTools: getAvailableMCPTools } = useMCPServer();
+  const { getAvailableTools: getAvailableLocalTools } = useLocalTools();
 
-  const availableTools = useMemo(
-    () => [...mcpTools, ...localTools],
-    [mcpTools, localTools],
-  );
-  logger.info("availableTools : ", { localTools });
 
   const submit = useCallback(
     async (messages: StreamableMessage[]): Promise<StreamableMessage> => {
       setIsLoading(true);
       setError(null);
       setResponse(null);
+
+      const availableTools = [
+        ...getAvailableMCPTools(),
+        ...getAvailableLocalTools(),
+      ].filter(Boolean);
 
       let currentResponseId = createId();
       let fullContent = "";
@@ -62,13 +57,12 @@ export const useAIService = (
       try {
         const stream = serviceInstance.streamChat(messages, {
           modelName: model,
-          systemPrompt: assistant?.systemPrompt || DEFAULT_SYSTEM_PROMPT,
+          systemPrompt: getCurrentAssistant()?.systemPrompt || DEFAULT_SYSTEM_PROMPT,
           availableTools,
           config: config,
         });
 
         for await (const chunk of stream) {
-          logger.info("chunk : ", { chunk });
           const parsedChunk = JSON.parse(chunk);
 
           if (parsedChunk.thinking) {
@@ -107,8 +101,9 @@ export const useAIService = (
             isStreaming: true,
             thinking,
             tool_calls: toolCalls,
+            sessionId: messages[0]?.sessionId || "", // Add sessionId
           };
-          logger.info("message : ", { finalMessage });
+
           setResponse(finalMessage);
         }
 
@@ -119,9 +114,11 @@ export const useAIService = (
           role: "assistant",
           isStreaming: false,
           tool_calls: toolCalls,
+          sessionId: messages[0]?.sessionId || "", // Add sessionId
         };
+        logger.info("message : ", { finalMessage });
         setResponse(finalMessage);
-        return finalMessage;
+        return finalMessage!;
       } catch (err) {
         logger.error("Error in useAIService stream:", err);
         setError(err as Error);
@@ -137,14 +134,15 @@ export const useAIService = (
       }
     },
     [
-      assistant,
       model,
       provider,
       apiKeys,
       config,
       serviceInstance,
-      availableTools,
-    ],
+      getAvailableLocalTools,
+      getAvailableMCPTools,
+      getCurrentAssistant
+    ]
   );
 
   return { response, isLoading, error, submit };

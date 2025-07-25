@@ -49,16 +49,16 @@ export const SettingsContext = createContext<SettingsContextType | undefined>(
 export function SettingsProvider({ children }: { children: React.ReactNode }) {
   const [{ value, loading, error }, load] = useAsyncFn(async () => {
     try {
-      const [apiKeys, preferredModel, windowSize] = await Promise.all([
-        dbService.getSetting<Record<AIServiceProvider, string>>("apiKeys"),
-        dbService.getSetting<ModelChoice>("preferredModel"),
-        dbService.getSetting<number>("windowSize"),
+      const [apiKeysObject, preferredModelObject, windowSizeObject] = await Promise.all([
+        dbService.objects.read("apiKeys"),
+        dbService.objects.read("preferredModel"),
+        dbService.objects.read("windowSize"),
       ]);
       const settings: Settings = {
         ...DEFAULT_SETTING,
-        ...(apiKeys ? { apiKeys } : {}),
-        ...(preferredModel ? { preferredModel } : {}),
-        ...(windowSize != null ? { windowSize } : {}),
+        ...(apiKeysObject ? { apiKeys: apiKeysObject.value } : {}),
+        ...(preferredModelObject ? { preferredModel: preferredModelObject.value } : {}),
+        ...(windowSizeObject != null ? { windowSize: windowSizeObject.value } : {}),
       };
       return settings;
     } catch (e) {
@@ -77,16 +77,16 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
       try {
         if (settings.apiKeys) {
           const newApiKeys = { ...(value?.apiKeys || {}), ...settings.apiKeys };
-          await dbService.saveSetting("apiKeys", newApiKeys);
+          await dbService.objects.upsert({ key: "apiKeys", value: newApiKeys });
         }
         if (settings.preferredModel) {
-          await dbService.saveSetting(
-            "preferredModel",
-            settings.preferredModel,
-          );
+          await dbService.objects.upsert({
+            key: "preferredModel",
+            value: settings.preferredModel,
+          });
         }
         if (settings.windowSize != null) {
-          await dbService.saveSetting("windowSize", settings.windowSize);
+          await dbService.objects.upsert({ key: "windowSize", value: settings.windowSize });
         }
         await load();
       } catch (e) {

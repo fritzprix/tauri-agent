@@ -1,36 +1,82 @@
 import { useState } from "react";
 import Chat from "./components/Chat";
 import SettingsModal from "./components/SettingsModal";
-import Button from "./components/ui/Button";
 import { ChatContextProvider } from "./context/ChatContext";
 import "./globals.css";
 import { ModelOptionsProvider } from "./context/ModelProvider";
 import { LocalToolProvider } from "./context/LocalToolContext";
 import { WeatherTool } from "./components/WeatherTool";
+import { AssistantContextProvider } from "./context/AssistantContext";
+import { MCPServerProvider } from "./context/MCPServerContext";
+import { SettingsProvider } from "./context/SettingsContext";
+import Sidebar from "./components/Sidebar";
+import Group from "./components/Group"; // New import
+import History from "./components/History"; // New import
+import GroupCreationModal from "./components/GroupCreationModal"; // New import
+
+type CurrentView = 'chat' | 'group' | 'history';
 
 function App() {
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const [currentView, setCurrentView] = useState<CurrentView>('chat');
+  const [isGroupCreationModalOpen, setIsGroupCreationModalOpen] = useState(false); // New state
+
+  const renderMainContent = () => {
+    switch (currentView) {
+      case 'chat':
+        return <Chat />;
+      case 'group':
+        return <Group />;
+      case 'history':
+        return <History />;
+      default:
+        return <Chat />;
+    }
+  };
 
   return (
-    <div className="h-screen bg-gray-900 text-white flex flex-col">
-      <header className="flex justify-between items-center p-4 border-b border-gray-700">
-        <h1 className="text-xl font-bold text-green-400">MCP Agent</h1>
-        <Button onClick={() => setIsSettingsModalOpen(true)}>Settings</Button>
-      </header>
-      <main className="flex-1 overflow-hidden">
-        <ModelOptionsProvider>
-          <LocalToolProvider>
-            <WeatherTool />
-            <ChatContextProvider>
-              <Chat />
-            </ChatContextProvider>
-          </LocalToolProvider>
-          <SettingsModal
-            isOpen={isSettingsModalOpen}
-            onClose={() => setIsSettingsModalOpen(false)}
-          />
-        </ModelOptionsProvider>
-      </main>
+    <div className="h-screen bg-gray-900 text-white flex">
+      <SettingsProvider>
+        <AssistantContextProvider>
+          <ModelOptionsProvider>
+            <MCPServerProvider>
+              <LocalToolProvider>
+                <WeatherTool />
+                <ChatContextProvider>
+                  {/* Sidebar */}
+                  <Sidebar
+                    isCollapsed={isSidebarCollapsed}
+                    onToggleCollapse={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
+                    onOpenSettings={() => setIsSettingsModalOpen(true)}
+                    onViewChange={setCurrentView}
+                    currentView={currentView}
+                    onOpenGroupCreationModal={() => setIsGroupCreationModalOpen(true)} // Pass new prop
+                  />
+
+                  {/* Main Content Area */}
+                  <main className={`flex-1 flex flex-col overflow-hidden ${isSidebarCollapsed ? "ml-0" : "ml-64"}`}>
+                    <header className="flex justify-between items-center p-4 border-b border-gray-700 flex-shrink-0">
+                      <h1 className="text-xl font-bold text-green-400">MCP Agent</h1>
+                    </header>
+                    <div className="flex-1 overflow-auto">
+                      {renderMainContent()}
+                    </div>
+                  </main>
+                  <SettingsModal
+                    isOpen={isSettingsModalOpen}
+                    onClose={() => setIsSettingsModalOpen(false)}
+                  />
+                  <GroupCreationModal
+                    isOpen={isGroupCreationModalOpen}
+                    onClose={() => setIsGroupCreationModalOpen(false)}
+                  />
+                </ChatContextProvider>
+              </LocalToolProvider>
+            </MCPServerProvider>
+          </ModelOptionsProvider>
+        </AssistantContextProvider>
+      </SettingsProvider>
     </div>
   );
 }

@@ -2,16 +2,17 @@ import { createId } from "@paralleldrive/cuid2";
 import {
   createContext,
   ReactNode,
+  useCallback,
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 import { useAsyncFn } from "react-use";
-import { useMCPServer } from "../hooks/use-mcp-server";
 import { dbService } from "../lib/db";
-import { Assistant } from "../types/chat";
 import { getLogger } from "../lib/logger";
+import { Assistant } from "../types/chat";
 
 const logger = getLogger("AssistantContext");
 
@@ -21,6 +22,7 @@ const DEFAULT_PROMPT =
 interface AssistantContextType {
   assistants: Assistant[];
   currentAssistant: Assistant | null;
+  getCurrentAssistant: () => Assistant|null;
   setCurrentAssistant: (assistant: Assistant | null) => void;
   saveAssistant: (
     assistant: Partial<Assistant>,
@@ -56,22 +58,27 @@ export const AssistantContextProvider = ({
   const [currentAssistant, setCurrentAssistant] = useState<Assistant | null>(
     null,
   );
+  const currentAssistantRef = useRef(currentAssistant);
   const [{ value: assistants, loading, error }, loadAssistants] =
     useAsyncFn(async () => {
-      let fetchedAssistants = await dbService.getAssistants();
-      if (fetchedAssistants.length === 0) {
+      let fetchedAssistants = await dbService.assistants.getPage(0, -1);
+      logger.info("fetched assistants : ", {fetchedAssistants});
+      if (fetchedAssistants.totalItems === 0) {
         const defaultAssistant = getDefaultAssistant();
-        await dbService.upsertAssistant(defaultAssistant);
-        fetchedAssistants = [defaultAssistant];
-      }
-      return fetchedAssistants;
-    }, []);
+        await dbService.assistants.upsert(defaultAssistant);
+        return [defaultAssistant];
+      } 
 
-  const { connectServers } = useMCPServer();
+      return fetchedAssistants.items;
+    }, []);
 
   useEffect(() => {
     loadAssistants();
   }, [loadAssistants]);
+
+  useEffect(() => {
+    currentAssistantRef.current = currentAssistant;
+  }, [currentAssistant]);
 
   useEffect(() => {
     if (!loading && assistants) {
@@ -81,16 +88,7 @@ export const AssistantContextProvider = ({
     }
   }, [loading, assistants]);
 
-  useEffect(() => {
-    if (currentAssistant) {
-      logger.debug("Current assistant changed, connecting to MCP", {
-        assistant: currentAssistant.name,
-      });
-      connectServers(currentAssistant);
-    }
-  }, [currentAssistant, connectServers]);
-
-  const [{}, saveAssistant] = useAsyncFn(
+  const [{ }, saveAssistant] = useAsyncFn(
     async (
       editingAssistant: Partial<Assistant>,
       mcpConfigText: string,
@@ -124,7 +122,7 @@ export const AssistantContextProvider = ({
           updatedAt: new Date(),
         };
 
-        await dbService.upsertAssistant(assistantToSave);
+        await dbService.assistants.upsert(assistantToSave);
 
         if (currentAssistant?.id === assistantToSave.id || !currentAssistant) {
           setCurrentAssistant(assistantToSave);
@@ -142,11 +140,11 @@ export const AssistantContextProvider = ({
     [currentAssistant, loadAssistants],
   );
 
-  const [{}, deleteAssistant] = useAsyncFn(
+  const [{ }, deleteAssistant] = useAsyncFn(
     async (assistantId: string) => {
       if (window.confirm("이 역할을 삭제하시겠습니까?")) {
         try {
-          await dbService.deleteAssistant(assistantId);
+          await dbService.assistants.delete(assistantId);
           await loadAssistants();
           // The useEffect hook will handle setting a new currentAssistant
         } catch (error) {
@@ -160,13 +158,18 @@ export const AssistantContextProvider = ({
     [loadAssistants],
   );
 
-  logger.info("assistant context : ", { assistants: assistants?.length });
+  const getCurrentAssistant = useCallback(() => {
+    return currentAssistantRef.current;
+  }, []);
+
+  logger.info("assistant context : ", { assistants: assistants?.length, error });
 
   const contextValue: AssistantContextType = useMemo(
     () => ({
       assistants: assistants || [],
       currentAssistant,
       setCurrentAssistant,
+      getCurrentAssistant,
       saveAssistant,
       deleteAssistant,
       error: error ?? null,
@@ -175,6 +178,7 @@ export const AssistantContextProvider = ({
       assistants,
       currentAssistant,
       setCurrentAssistant,
+      getCurrentAssistant,
       saveAssistant,
       deleteAssistant,
       error,

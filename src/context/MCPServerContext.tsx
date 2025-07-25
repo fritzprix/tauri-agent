@@ -1,13 +1,23 @@
-import React, { createContext, ReactNode, useCallback, useState } from "react";
+import React, {
+  createContext,
+  ReactNode,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useAsyncFn } from "react-use";
-import { Assistant } from "../lib/db";
 import { getLogger } from "../lib/logger";
 import { MCPTool, tauriMCPClient } from "../lib/tauri-mcp-client";
+import { useAssistantContext } from "./AssistantContext";
+import { Assistant } from "../types/chat";
 
 const logger = getLogger("MCPServerContext");
 
 interface MCPServerContextType {
   availableTools: MCPTool[];
+  getAvailableTools: () => MCPTool[];
   isConnecting: boolean;
   status: Record<string, boolean>;
   connectServers: (assistant: Assistant) => Promise<void>;
@@ -27,6 +37,8 @@ export const MCPServerProvider: React.FC<{ children: ReactNode }> = ({
 }) => {
   const [availableTools, setAvailableTools] = useState<MCPTool[]>([]);
   const [serverStatus, setServerStatus] = useState<Record<string, boolean>>({});
+  const availableToolsRef = useRef(availableTools);
+  const { currentAssistant } = useAssistantContext();
   const [{ loading: isConnecting }, connectServers] = useAsyncFn(
     async (assistant: Assistant) => {
       const serverStatus: Record<string, boolean> = {};
@@ -144,13 +156,39 @@ export const MCPServerProvider: React.FC<{ children: ReactNode }> = ({
     [],
   );
 
-  const value = {
-    availableTools,
-    isConnecting,
-    status: serverStatus,
-    connectServers,
-    executeToolCall,
-  };
+  useEffect(() => {
+    availableToolsRef.current = availableTools;
+  },[availableTools]);
+
+  useEffect(() => {
+    if (currentAssistant) {
+      logger.info("connect : ", { currentAssistant: currentAssistant.name });
+      connectServers(currentAssistant);
+    }
+  }, [connectServers, currentAssistant]);
+
+  const getAvailableTools = useCallback(() => {
+    return availableToolsRef.current;
+  },[])
+
+  const value: MCPServerContextType = useMemo(
+    () => ({
+      availableTools,
+      isConnecting,
+      getAvailableTools,
+      status: serverStatus,
+      connectServers,
+      executeToolCall,
+    }),
+    [
+      availableTools,
+      isConnecting,
+      serverStatus,
+      getAvailableTools,
+      connectServers,
+      executeToolCall,
+    ],
+  );
 
   return (
     <MCPServerContext.Provider value={value}>

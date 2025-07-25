@@ -17,7 +17,7 @@ export default function Input({
 }: InputProps) {
   const baseClasses =
     variant === "terminal"
-      ? "w-full bg-transparent border-none outline-none text-green-400 px-0 py-1 terminal-input"
+      ? "w-full bg-transparent border-none outline-none text-green-400 px-0 py-1 terminal-input focus:ring-2 focus:ring-green-400 focus:ring-offset-2 focus:ring-offset-black transition-all duration-200"
       : "w-full bg-transparent border border-gray-600 rounded px-3 py-2 text-green-400 focus:border-green-400 focus:outline-none transition-colors";
 
   // For terminal variant, render input directly without wrapper
