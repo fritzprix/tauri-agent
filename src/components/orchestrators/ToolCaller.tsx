@@ -3,10 +3,10 @@ import { useEffect } from "react";
 import { useLocalTools } from "../../context/LocalToolContext";
 import { useChatContext } from "../../hooks/use-chat";
 import { useMCPServer } from "../../hooks/use-mcp-server";
-import { StreamableMessage } from "../../lib/ai-service";
+import { StreamableMessage } from '../../types/chat';
 
 export const ToolCaller: React.FC = () => {
-  const { messages, addMessage, submit } = useChatContext();
+  const { messages, addMessage, submit, currentSession } = useChatContext();
   const { executeToolCall: callMcpTool } = useMCPServer();
   const { isLocalTool, executeToolCall: callLocalTool } = useLocalTools();
 
@@ -32,6 +32,7 @@ export const ToolCaller: React.FC = () => {
             role: "tool",
             content: result.content,
             tool_call_id: toolCall.id,
+            sessionId: currentSession?.id || "", // Add sessionId
           });
         }
         submit(toolResults);

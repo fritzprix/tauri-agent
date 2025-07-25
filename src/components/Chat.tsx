@@ -1,10 +1,12 @@
+
+
 import { createId } from "@paralleldrive/cuid2";
 import React, { useEffect, useRef, useState, useMemo } from "react";
 import { useAssistantContext } from "../context/AssistantContext";
 import { useChatContext } from "../hooks/use-chat";
 import { useMCPServer } from "../hooks/use-mcp-server";
 import { useLocalTools } from "../context/LocalToolContext";
-import { StreamableMessage } from "../lib/ai-service";
+import { StreamableMessage, Assistant } from "../types/chat";
 import { getLogger } from "../lib/logger";
 import AssistantManager from "./AssistantManager";
 import { Button, CompactModelPicker, FileAttachment, Input } from "./ui";
@@ -22,7 +24,7 @@ interface ChatProps {
 export default function Chat({ children }: ChatProps) {
   const [mode, setMode] = useState<"chat" | "agent">("agent");
   const [showAssistantManager, setShowAssistantManager] = useState(false);
-  const { currentAssistant } = useAssistantContext();
+  const { assistants, currentAssistant, setCurrentAssistant } = useAssistantContext();
   const [showToolsDetail, setShowToolsDetail] = useState(false);
   const [attachedFiles, setAttachedFiles] = useState<
     { name: string; content: string }[]
@@ -34,7 +36,7 @@ export default function Chat({ children }: ChatProps) {
     [mcpTools, localTools],
   );
   const [input, setInput] = useState("");
-  const { submit, isLoading, messages } = useChatContext();
+  const { submit, isLoading, messages, currentSession, startNewSession } = useChatContext();
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -105,6 +107,7 @@ export default function Chat({ children }: ChatProps) {
       id: createId(),
       content: messageContent,
       role: "user",
+      sessionId: currentSession?.id || "", // Add sessionId
     };
 
     setInput("");
@@ -117,8 +120,42 @@ export default function Chat({ children }: ChatProps) {
     }
   };
 
+  const handleAssistantSelect = (assistant: Assistant) => {
+    setCurrentAssistant(assistant);
+    startNewSession([assistant], "single", assistant.name);
+  };
+
+  if (!currentSession) {
+    return (
+      <div className="h-full w-full flex flex-col items-center justify-center bg-black text-green-400 font-mono p-4">
+        <h2 className="text-2xl font-bold mb-6">Select an Assistant to Start a Chat</h2>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 w-full max-w-4xl">
+          {assistants.map((assistant) => (
+            <div
+              key={assistant.id}
+              className="bg-gray-800 border border-gray-700 rounded-lg p-4 cursor-pointer hover:border-green-400 transition-colors"
+              onClick={() => handleAssistantSelect(assistant)}
+            >
+              <h3 className="text-lg font-semibold text-green-300">{assistant.name}</h3>
+              <p className="text-sm text-gray-400 mt-2 line-clamp-3">{assistant.systemPrompt}</p>
+            </div>
+          ))}
+        </div>
+        <Button
+          onClick={() => setShowAssistantManager(true)}
+          className="mt-8 bg-gray-800 border border-gray-600 text-gray-400 hover:bg-gray-700"
+        >
+          Manage Assistants
+        </Button>
+        {showAssistantManager && (
+          <AssistantManager onClose={() => setShowAssistantManager(false)} />
+        )}
+      </div>
+    );
+  }
+
   return (
-    <div className="h-full w-screen bg-black text-green-400 font-mono flex flex-col rounded-lg overflow-hidden shadow-2xl shadow-green-400/30">
+    <div className="h-full w-full bg-black text-green-400 font-mono flex flex-col rounded-lg overflow-hidden shadow-2xl shadow-green-400/30">
       {/* Terminal Header */}
       <div className="bg-gray-900 px-4 py-3 flex items-center justify-between border-b border-gray-700 flex-shrink-0">
         <div className="flex items-center gap-4">
@@ -129,11 +166,11 @@ export default function Chat({ children }: ChatProps) {
           </div>
           <div className="text-sm text-gray-500">mcp-agent@terminal ~ %</div>
         </div>
-        {currentAssistant && (
+        {currentSession && (
           <div className="flex items-center gap-2">
-            <span className="text-xs text-gray-400">Assistant:</span>
+            <span className="text-xs text-gray-400">Session:</span>
             <span className="text-sm text-green-400">
-              {currentAssistant.name}
+              {currentSession.name} ({currentSession.type})
             </span>
           </div>
         )}
@@ -177,14 +214,14 @@ export default function Chat({ children }: ChatProps) {
             <MessageBubble
               key={m.id}
               message={m}
-              currentAssistantName={currentAssistant?.name}
+              currentAssistantName={currentSession?.assistants[0]?.name}
             />
           ))}
           {isLoading && (
             <div className="flex justify-start">
               <div className="bg-gray-800/50 text-gray-200 rounded px-3 py-2">
                 <div className="text-xs text-gray-400 mb-1">
-                  Agent ({currentAssistant?.name})
+                  Agent ({currentSession?.assistants[0]?.name})
                 </div>
                 <div className="text-sm">thinking...</div>
               </div>
@@ -201,7 +238,7 @@ export default function Chat({ children }: ChatProps) {
           <div className="flex items-center gap-2">
             <span className="text-xs text-gray-400">Assistant:</span>
             <span className="text-xs text-green-400">
-              {currentAssistant?.name || "None"}
+              {currentSession?.assistants[0]?.name || "None"}
             </span>
           </div>
 

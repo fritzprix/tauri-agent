@@ -1,10 +1,7 @@
 import { createId } from "@paralleldrive/cuid2";
 import { useCallback, useMemo, useState } from "react";
-import {
-  AIServiceConfig,
-  AIServiceFactory,
-  StreamableMessage,
-} from "../lib/ai-service";
+import { AIServiceConfig, AIServiceFactory } from "../lib/ai-service";
+import { StreamableMessage } from "../types/chat";
 import { getLogger } from "../lib/logger";
 import { useSettings } from "./use-settings";
 import { useMCPServer } from "./use-mcp-server";
@@ -104,6 +101,7 @@ export const useAIService = (config?: AIServiceConfig) => {
             isStreaming: true,
             thinking,
             tool_calls: toolCalls,
+            sessionId: messages[0]?.sessionId || "", // Add sessionId
           };
 
           setResponse(finalMessage);
@@ -116,10 +114,11 @@ export const useAIService = (config?: AIServiceConfig) => {
           role: "assistant",
           isStreaming: false,
           tool_calls: toolCalls,
+          sessionId: messages[0]?.sessionId || "", // Add sessionId
         };
         logger.info("message : ", { finalMessage });
         setResponse(finalMessage);
-        return finalMessage;
+        return finalMessage!;
       } catch (err) {
         logger.error("Error in useAIService stream:", err);
         setError(err as Error);

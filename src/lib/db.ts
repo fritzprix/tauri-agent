@@ -1,5 +1,5 @@
 import Dexie, { Table } from "dexie";
-import { Assistant } from "../types/chat";
+import { Assistant, Session, StreamableMessage } from "../types/chat";
 
 // --- TYPE DEFINITIONS ---
 export interface DatabaseObject {
@@ -29,6 +29,8 @@ export interface CRUD<T> {
 export interface DatabaseService {
   assistants: CRUD<Assistant>;
   objects: CRUD<DatabaseObject>;
+  sessions: CRUD<Session>; // New
+  messages: CRUD<StreamableMessage>; // New
 }
 
 class LocalDatabase extends Dexie {
@@ -42,6 +44,8 @@ class LocalDatabase extends Dexie {
 
   assistants!: Table<Assistant, string>;
   objects!: Table<DatabaseObject, string>;
+  sessions!: Table<Session, string>; // New table
+  messages!: Table<StreamableMessage, string>; // New table
 
   constructor() {
     super("MCPAgentDB");
@@ -76,6 +80,14 @@ class LocalDatabase extends Dexie {
         if (!obj.updatedAt) obj.updatedAt = now;
         await tx.table('objects').put(obj);
       }
+    });
+
+    // Version 3: Add sessions and messages tables
+    this.version(3).stores({
+      sessions: "&id, createdAt, updatedAt",
+      messages: "&id, sessionId, createdAt",
+    }).upgrade(async () => {
+      console.log("Upgrading database to version 3 - adding sessions and messages tables");
     });
   }
 }
@@ -172,6 +184,77 @@ export const dbService: DatabaseService = {
     },
     count: async (): Promise<number> => {
       return LocalDatabase.getInstance().objects.count();
+    },
+  },
+  sessions: {
+    upsert: async (session: Session) => {
+      const now = new Date();
+      if (!session.createdAt) session.createdAt = now;
+      session.updatedAt = now;
+      await LocalDatabase.getInstance().sessions.put(session);
+    },
+    read: async (id: string) => {
+      return LocalDatabase.getInstance().sessions.get(id);
+    },
+    delete: async (id: string) => {
+      await LocalDatabase.getInstance().sessions.delete(id);
+    },
+    getPage: async (page: number, pageSize: number): Promise<Page<Session>> => {
+      const db = LocalDatabase.getInstance();
+      const totalItems = await db.sessions.count();
+      
+      if (pageSize === -1) {
+        const items = await db.sessions.orderBy('updatedAt').reverse().toArray();
+        return createPage(items, page, pageSize, totalItems);
+      }
+      
+      const offset = (page - 1) * pageSize;
+      const items = await db.sessions
+        .orderBy('updatedAt')
+        .reverse()
+        .offset(offset)
+        .limit(pageSize)
+        .toArray();
+      
+      return createPage(items, page, pageSize, totalItems);
+    },
+    count: async (): Promise<number> => {
+      return LocalDatabase.getInstance().sessions.count();
+    },
+  },
+  messages: {
+    upsert: async (message: StreamableMessage) => {
+      const now = new Date();
+      if (!message.createdAt) message.createdAt = now;
+      message.updatedAt = now;
+      await LocalDatabase.getInstance().messages.put(message);
+    },
+    read: async (id: string) => {
+      return LocalDatabase.getInstance().messages.get(id);
+    },
+    delete: async (id: string) => {
+      await LocalDatabase.getInstance().messages.delete(id);
+    },
+    getPage: async (page: number, pageSize: number): Promise<Page<StreamableMessage>> => {
+      const db = LocalDatabase.getInstance();
+      const totalItems = await db.messages.count();
+      
+      if (pageSize === -1) {
+        const items = await db.messages.orderBy('createdAt').toArray();
+        return createPage(items, page, pageSize, totalItems);
+      }
+      
+      const offset = (page - 1) * pageSize;
+      const items = await db.messages
+        .orderBy('createdAt')
+        .offset(offset)
+        .limit(pageSize)
+        .toArray();
+      
+      return createPage(items, page, pageSize, totalItems);
+    },
+    count: async (): Promise<number> => {
+      return LocalDatabase.getInstance().messages.count();
     },
   },
 };

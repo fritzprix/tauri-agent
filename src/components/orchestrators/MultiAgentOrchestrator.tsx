@@ -2,7 +2,6 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useAssistantContext } from '../../context/AssistantContext';
 import { LocalService, useLocalTools } from '../../context/LocalToolContext';
 import { useChatContext } from '../../hooks/use-chat';
-
 import { createId } from '@paralleldrive/cuid2';
 import { Assistant } from '../../types/chat';
 import { Button } from '../ui';
@@ -39,7 +38,7 @@ interface PlanItem {
 const MultiAgentOrchestrator: React.FC = () => {
   const { currentAssistant, setCurrentAssistant, assistants } = useAssistantContext();
   const { registerService, unregisterService } = useLocalTools();
-  const { addMessage, submit } = useChatContext();
+  const { addMessage, submit, currentSession } = useChatContext();
 
   const [isExpanded, setIsExpanded] = useState(false);
   const plan = useRef<PlanItem[]>([]);
@@ -48,15 +47,18 @@ const MultiAgentOrchestrator: React.FC = () => {
 
   // ✨ Clean, stable tool handlers using the simpler useStableHandler
   const handlePromptToUser = useCallback(({ prompt }: PromptToUserInput) => {
+    if (!currentSession) return; // Ensure there's an active session
     addMessage({
       assistantId: MULTI_AGENT_ORCHESTRATOR_ASSISTANT_ID,
       id: createId(),
       content: prompt,
-      role: 'assistant'
+      role: 'assistant',
+      sessionId: currentSession.id,
     });
-  }, [addMessage]);
+  }, [addMessage, currentSession]);
 
   const handleSwitchAssistant = useCallback(({ assistantId, instruction }: SwitchAssistantInput) => {
+    if (!currentSession) return; // Ensure there's an active session
     const nextAssistant = assistants.find(a => a.id === assistantId);
     if (nextAssistant) {
       setCurrentAssistant(nextAssistant);
@@ -64,12 +66,13 @@ const MultiAgentOrchestrator: React.FC = () => {
         id: createId(),
         assistantId: MULTI_AGENT_ORCHESTRATOR_ASSISTANT_ID,
         content: instruction,
-        role: 'user'
+        role: 'user',
+        sessionId: currentSession.id,
       }]);
     } else {
       throw new Error(`Assistant with ID ${assistantId} not found`);
     }
-  },[submit]);
+  },[submit, currentSession]);
 
   const handleSetPlan = useCallback(({ items }: SetPlanInput) => {
     const newPlan = items.map(item => ({ plan: item, complete: false } satisfies PlanItem));
@@ -89,13 +92,15 @@ const MultiAgentOrchestrator: React.FC = () => {
   },[]);
 
   const handleReportResult = useCallback(({ resultInDetail }: ReportResultInput) => {
+    if (!currentSession) return; // Ensure there's an active session
     addMessage({
       id: createId(),
       assistantId: MULTI_AGENT_ORCHESTRATOR_ASSISTANT_ID,
       content: resultInDetail,
-      role: 'assistant'
+      role: 'assistant',
+      sessionId: currentSession.id,
     });
-  },[]);
+  },[addMessage, currentSession]);
 
   // ✨ Now localService is stable - handlers never change
   const localService: LocalService = useMemo(() => ({
