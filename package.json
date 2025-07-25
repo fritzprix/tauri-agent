@@ -1,5 +1,5 @@
 {
-  "name": "tauri-agent",
+  "name": "synaptic-flow",
   "private": false,
   "version": "0.1.0",
   "description": "Lightning Fast AI Companion - Tauri-based AI agent platform with MCP integration",
@@ -7,18 +7,18 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/fritzprix/tauri-agent.git"
+    "url": "https://github.com/fritzprix/synaptic-flow.git"
   },
   "keywords": [
-    "tauri",
     "ai",
     "agent",
+    "multi-agent",
+    "orchestration",
     "mcp",
     "model-context-protocol",
-    "rust",
     "react",
     "desktop",
-    "electron-alternative"
+    "shareable-config"
   ],
   "type": "module",
   "scripts": {
