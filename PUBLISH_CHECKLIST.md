@@ -18,7 +18,7 @@
 1. **GitHub 저장소 생성**
    ```bash
    # GitHub에서 새 저장소 생성 후
-   git remote add origin https://github.com/yourusername/synaptic-flow.git
+   git remote add origin https://github.com/fritzprix/synaptic-flow.git
    git branch -M main
    git push -u origin main
    ```
@@ -43,7 +43,7 @@
 ## 📊 성공 지표
 
 - ⭐ GitHub Stars: 100+ (1개월 목표)
-- 🍴 Forks: 20+ 
+- 🍴 Forks: 20+
 - 📥 Downloads: 500+ (첫 릴리스)
 - 💬 Community: Discord/Reddit 채널 개설
 
