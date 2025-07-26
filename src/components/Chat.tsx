@@ -1,18 +1,20 @@
 import { createId } from "@paralleldrive/cuid2";
 import React, { useEffect, useRef, useState, useMemo } from "react";
 import { useAssistantContext } from "../context/AssistantContext";
-import { useChatContext } from "../hooks/use-chat";
 import { useMCPServer } from "../hooks/use-mcp-server";
 import { useLocalTools } from "../context/LocalToolContext";
 import { StreamableMessage } from "../types/chat";
 import { getLogger } from "../lib/logger";
 import AssistantManager from "./AssistantManager";
-import { FileAttachment, Input } from "./ui";
+import { FileAttachment, InputWithLabel as Input } from "./ui";
 import ToolsModal from "./ToolsModal";
 import MessageBubble from "./MessageBubble";
 import { ToolCaller } from "./orchestrators/ToolCaller";
 import TerminalHeader from "./TerminalHeader";
 import { Button } from "./ui";
+// import { useChatContext } from "../context/ChatContext";
+import { useSessionContext } from "../context/SessionContext";
+import { useChatContext } from "../hooks/use-chat";
 
 const logger = getLogger("Chat");
 
@@ -39,7 +41,8 @@ export default function Chat({
     [mcpTools, localTools],
   );
   const [input, setInput] = useState("");
-  const { submit, isLoading, messages, currentSession } = useChatContext();
+  const { current: currentSession } = useSessionContext();
+  const { submit, isLoading, messages } = useChatContext();
 
   // Since ChatContainer ensures currentSession exists before rendering Chat,
   // we can safely assert it's not null here
@@ -95,6 +98,7 @@ export default function Chat({
     setAttachedFiles((prev) => [...prev, ...newAttachedFiles]);
     e.target.value = "";
   };
+
   const removeAttachedFile = (index: number) => {
     setAttachedFiles((prev) => prev.filter((_, i) => i !== index));
   };

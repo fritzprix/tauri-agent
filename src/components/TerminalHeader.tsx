@@ -1,18 +1,21 @@
-
-import { createContext, useContext, useState, ReactNode } from 'react';
-import { CompactModelPicker } from './ui';
+import { createContext, useContext, useState, ReactNode } from "react";
+import { CompactModelPicker } from "./ui";
 
 interface TerminalHeaderContextType {
   isAgentMode: boolean;
   toggleMode: () => void;
 }
 
-const TerminalHeaderContext = createContext<TerminalHeaderContextType | undefined>(undefined);
+const TerminalHeaderContext = createContext<
+  TerminalHeaderContextType | undefined
+>(undefined);
 
 export const useTerminalHeaderContext = () => {
   const context = useContext(TerminalHeaderContext);
   if (!context) {
-    throw new Error('useTerminalHeaderContext must be used within a TerminalHeaderProvider');
+    throw new Error(
+      "useTerminalHeaderContext must be used within a TerminalHeaderProvider",
+    );
   }
   return context;
 };
