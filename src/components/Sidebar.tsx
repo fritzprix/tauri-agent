@@ -1,6 +1,7 @@
 import { useCallback, useMemo } from "react";
 import { useSessionContext } from "../context/SessionContext";
-import Button from "./ui/Button";
+import { Button } from "./ui";
+import SessionList from "./SessionList";
 
 interface SidebarProps {
   isCollapsed: boolean;
@@ -37,6 +38,13 @@ export default function Sidebar({
       onViewChange("chat"); // Switch to chat view after loading session
     },
     [select, onViewChange],
+  );
+
+  const handleDeleteSession = useCallback(
+    async (sessionId: string) => {
+      await deleteSession(sessionId);
+    },
+    [deleteSession],
   );
 
   const navButtonClass = (view: string) =>
@@ -124,52 +132,29 @@ export default function Sidebar({
                 {isCollapsed ? "📚" : "View History"}
               </Button>
             </li>
-            {sessions.map((session) => (
-              <li
-                key={session.id}
-                className="flex items-center justify-between group"
-              >
-                <Button
-                  variant="ghost"
-                  className={`flex-1 justify-start text-left transition-colors duration-150 ${currentView === "chat" && currentSession?.id === session.id ? "bg-green-900/20 text-green-400" : "text-gray-400 hover:bg-gray-700"}`}
-                  onClick={() => handleLoadSession(session.id)}
-                >
-                  {isCollapsed ? (
-                    session.type === "single" ? (
-                      "💬"
-                    ) : (
-                      "👥"
-                    )
-                  ) : (
-                    <span className="truncate">
-                      {session.name ||
-                        session.assistants[0]?.name ||
-                        "Untitled Session"}
-                    </span>
-                  )}
-                </Button>
-                {!isCollapsed && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="ml-2 opacity-0 group-hover:opacity-100 transition-opacity"
-                    onClick={async (e) => {
-                      e.stopPropagation(); // Prevent loading session when deleting
-                      if (
-                        window.confirm(
-                          `Are you sure you want to delete session "${session.name || "Untitled Session"}"?`,
-                        )
-                      ) {
-                        await deleteSession(session.id);
-                      }
-                    }}
-                  >
-                    &#x2715; {/* X icon */}
-                  </Button>
-                )}
-              </li>
-            ))}
           </ul>
+
+          {/* Recent Sessions - only show if not in history view */}
+          {currentView !== "history" && sessions.length > 0 && (
+            <div className="mt-4">
+              {!isCollapsed && (
+                <h4 className="text-xs font-semibold mb-2 text-gray-500 uppercase">
+                  Recent Sessions
+                </h4>
+              )}
+              <SessionList
+                sessions={sessions.slice(0, 5)} // Show only 5 recent sessions
+                currentSessionId={
+                  currentView === "chat" ? currentSession?.id : undefined
+                }
+                isCollapsed={isCollapsed}
+                onSelectSession={handleLoadSession}
+                onDeleteSession={handleDeleteSession}
+                showSearch={false}
+                emptyMessage=""
+              />
+            </div>
+          )}
         </div>
       </nav>
 

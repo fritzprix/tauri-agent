@@ -2,7 +2,7 @@ import { useCallback, useState } from "react";
 import { useAssistantContext } from "../context/AssistantContext";
 import { useSessionContext } from "../context/SessionContext";
 import { Assistant } from "../types/chat";
-import { Button, Input, Modal } from "./ui";
+import { ButtonLegacy as Button, InputWithLabel as Input, Modal } from "./ui";
 
 interface GroupCreationModalProps {
   isOpen: boolean;

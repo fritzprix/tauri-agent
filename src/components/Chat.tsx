@@ -6,7 +6,7 @@ import { useLocalTools } from "../context/LocalToolContext";
 import { StreamableMessage } from "../types/chat";
 import { getLogger } from "../lib/logger";
 import AssistantManager from "./AssistantManager";
-import { FileAttachment, Input } from "./ui";
+import { FileAttachment, InputWithLabel as Input } from "./ui";
 import ToolsModal from "./ToolsModal";
 import MessageBubble from "./MessageBubble";
 import { ToolCaller } from "./orchestrators/ToolCaller";
