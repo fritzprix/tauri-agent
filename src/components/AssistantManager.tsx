@@ -1,7 +1,10 @@
 "use client";
 
 import { useCallback, useState } from "react";
-import { useAssistantContext } from "../context/AssistantContext";
+import {
+  DEFAULT_MCP_CONFIG,
+  useAssistantContext,
+} from "../context/AssistantContext";
 import { useLocalTools } from "../context/LocalToolContext";
 import { useMCPServer } from "../hooks/use-mcp-server";
 import { getLogger } from "../lib/logger";
@@ -21,6 +24,7 @@ export default function AssistantManager({ onClose }: AssistantManagerProps) {
     saveAssistant,
     deleteAssistant,
     setCurrentAssistant,
+    getNewAssistantTemplate,
   } = useAssistantContext();
   const { status, isConnecting: isCheckingStatus } = useMCPServer();
   const { getAvailableServices, getToolsByService } = useLocalTools();
@@ -33,29 +37,9 @@ export default function AssistantManager({ onClose }: AssistantManagerProps) {
 
   const handleCreateNew = () => {
     setIsCreating(true);
-    const newAssistantTemplate: Partial<Assistant> = {
-      name: "",
-      systemPrompt:
-        "You are a helpful AI assistant with access to various tools. Use the available tools to help users accomplish their tasks.",
-      mcpConfig: {},
-    };
-    setEditingAssistant(newAssistantTemplate);
-
-    const defaultMcpConfig = {
-      mcpServers: {
-        "sequential-thinking": {
-          command: "npx",
-          args: ["-y", "@modelcontextprotocol/server-sequential-thinking"],
-          env: {},
-        },
-        filesystem: {
-          command: "npx",
-          args: ["-y", "@modelcontextprotocol/server-filesystem", "/tmp"],
-          env: {},
-        },
-      },
-    };
-    setMcpConfigText(JSON.stringify(defaultMcpConfig, null, 2));
+    const { assistant, mcpConfigText } = getNewAssistantTemplate();
+    setEditingAssistant(assistant);
+    setMcpConfigText(mcpConfigText);
   };
 
   const handleEditAssistant = (assistant: Assistant) => {
@@ -66,24 +50,16 @@ export default function AssistantManager({ onClose }: AssistantManagerProps) {
 
   const handleSaveAssistant = async () => {
     if (!editingAssistant) return;
-    let assistantToSave = { ...editingAssistant } as Assistant;
-    try {
-      // Parse MCP config from text
-      if (mcpConfigText) {
-        assistantToSave.mcpConfig = JSON.parse(mcpConfigText);
-      }
-    } catch {
-      alert("유효하지 않은 JSON 형식입니다. JSON을 확인해주세요.");
-      return;
+
+    logger.info("saving assistant: ", { editingAssistant });
+
+    const savedAssistant = await saveAssistant(editingAssistant, mcpConfigText);
+    if (savedAssistant) {
+      setEditingAssistant(null);
+      setIsCreating(false);
+      setMcpConfigText("");
+      logger.debug(`Assistant "${savedAssistant.name}" saved successfully`);
     }
-
-    logger.info("saved : ", { assistantToSave });
-
-    await saveAssistant(assistantToSave, mcpConfigText);
-    setEditingAssistant(null);
-    setIsCreating(false);
-    setMcpConfigText("");
-    logger.debug(`Assistant "${assistantToSave.name}" saved successfully`);
   };
 
   const handleSelectAssistant = useCallback(
@@ -100,14 +76,6 @@ export default function AssistantManager({ onClose }: AssistantManagerProps) {
       return;
     }
 
-    // Confirm deletion
-    if (
-      !window.confirm(
-        `"${assistant.name}" 어시스턴트를 정말로 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.`,
-      )
-    ) {
-      return;
-    }
     try {
       setIsDeleting(assistant.id);
       logger.info(
@@ -130,7 +98,7 @@ export default function AssistantManager({ onClose }: AssistantManagerProps) {
         }
       }
 
-      // Delete the assistant
+      // Delete the assistant (confirmation will be handled by the context)
       await deleteAssistant(assistant.id);
 
       logger.info(
@@ -409,20 +377,7 @@ export default function AssistantManager({ onClose }: AssistantManagerProps) {
                     value={mcpConfigText}
                     onChange={(e) => setMcpConfigText(e.target.value)}
                     className="h-48 font-mono text-sm"
-                    placeholder={`{
-  "mcpServers": {
-    "filesystem": {
-      "command": "npx",
-      "args": ["-y", "@modelcontextprotocol/server-filesystem", "/tmp"],
-      "env": {}
-    },
-    "sequential-thinking": {
-      "command": "npx",
-      "args": ["-y", "@modelcontextprotocol/server-sequential-thinking"],
-      "env": {}
-    }
-  }
-}`}
+                    placeholder={JSON.stringify(DEFAULT_MCP_CONFIG)}
                   />
                   <div className="text-xs text-gray-500 mt-1">
                     * mcpServers 형식만 사용됩니다. 빈 객체로 두면 MCP 서버를
