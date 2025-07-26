@@ -1,15 +1,13 @@
-import { useEffect, useState } from "react";
+import { useCallback, useMemo } from "react";
+import { useSessionContext } from "../context/SessionContext";
 import Button from "./ui/Button";
-import { dbService } from "../lib/db";
-import { Session } from "../types/chat";
-import { useChatContext } from "../hooks/use-chat";
 
 interface SidebarProps {
   isCollapsed: boolean;
   onToggleCollapse: () => void;
   onOpenSettings: () => void;
-  onViewChange: (view: 'chat' | 'group' | 'history') => void;
-  currentView: 'chat' | 'group' | 'history';
+  onViewChange: (view: "chat" | "group" | "history") => void;
+  currentView: "chat" | "group" | "history";
   onOpenGroupCreationModal: () => void; // New prop
 }
 
@@ -21,21 +19,25 @@ export default function Sidebar({
   currentView,
   onOpenGroupCreationModal,
 }: SidebarProps) {
-  const [sessions, setSessions] = useState<Session[]>([]);
-  const { loadSession, currentSession, clearCurrentSession, deleteSession } = useChatContext();
+  const {
+    select,
+    sessions: sessionPages,
+    current: currentSession,
+    delete: deleteSession,
+  } = useSessionContext();
 
-  useEffect(() => {
-    const fetchSessions = async () => {
-      const fetchedSessions = await dbService.sessions.getPage(1, -1); // Fetch all sessions
-      setSessions(fetchedSessions.items);
-    };
-    fetchSessions();
-  }, []);
+  const sessions = useMemo(
+    () => (sessionPages ? sessionPages.flatMap((p) => p.items) : []),
+    [sessionPages],
+  );
 
-  const handleLoadSession = async (sessionId: string) => {
-    await loadSession(sessionId);
-    onViewChange("chat"); // Switch to chat view after loading session
-  };
+  const handleLoadSession = useCallback(
+    async (sessionId: string) => {
+      select(sessionId);
+      onViewChange("chat"); // Switch to chat view after loading session
+    },
+    [select, onViewChange],
+  );
 
   const navButtonClass = (view: string) =>
     `w-full justify-start transition-colors duration-150 ${currentView === view ? "bg-green-900/20 text-green-400" : "text-gray-400 hover:bg-gray-700"}`;
@@ -46,10 +48,13 @@ export default function Sidebar({
     >
       {/* Sidebar Header */}
       <div className="p-4 flex items-center justify-between flex-shrink-0">
-        {!isCollapsed && (
-          <h2 className="text-lg font-bold">Navigation</h2>
-        )}
-        <Button variant="ghost" size="sm" onClick={onToggleCollapse} className="transition-transform duration-300 ease-in-out transform hover:scale-110">
+        {!isCollapsed && <h2 className="text-lg font-bold">Navigation</h2>}
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={onToggleCollapse}
+          className="transition-transform duration-300 ease-in-out transform hover:scale-110"
+        >
           {isCollapsed ? ">" : "<"}
         </Button>
       </div>
@@ -65,9 +70,10 @@ export default function Sidebar({
                 variant="ghost"
                 className={navButtonClass("chat")}
                 onClick={() => {
-                  clearCurrentSession();
+                  select();
                   onViewChange("chat");
-                }}>
+                }}
+              >
                 {isCollapsed ? "💬" : "New Chat"}
               </Button>
             </li>
@@ -77,7 +83,9 @@ export default function Sidebar({
 
         {/* Group Section */}
         <div>
-          {!isCollapsed && <h3 className="text-sm font-semibold mb-2">Group</h3>}
+          {!isCollapsed && (
+            <h3 className="text-sm font-semibold mb-2">Group</h3>
+          )}
           <ul className="space-y-2">
             <li>
               <Button
@@ -103,7 +111,9 @@ export default function Sidebar({
 
         {/* History Section */}
         <div>
-          {!isCollapsed && <h3 className="text-sm font-semibold mb-2">History</h3>}
+          {!isCollapsed && (
+            <h3 className="text-sm font-semibold mb-2">History</h3>
+          )}
           <ul className="space-y-2">
             <li>
               <Button
@@ -115,17 +125,26 @@ export default function Sidebar({
               </Button>
             </li>
             {sessions.map((session) => (
-              <li key={session.id} className="flex items-center justify-between group">
+              <li
+                key={session.id}
+                className="flex items-center justify-between group"
+              >
                 <Button
                   variant="ghost"
                   className={`flex-1 justify-start text-left transition-colors duration-150 ${currentView === "chat" && currentSession?.id === session.id ? "bg-green-900/20 text-green-400" : "text-gray-400 hover:bg-gray-700"}`}
                   onClick={() => handleLoadSession(session.id)}
                 >
                   {isCollapsed ? (
-                    session.type === "single" ? "💬" : "👥"
+                    session.type === "single" ? (
+                      "💬"
+                    ) : (
+                      "👥"
+                    )
                   ) : (
                     <span className="truncate">
-                      {session.name || session.assistants[0]?.name || "Untitled Session"}
+                      {session.name ||
+                        session.assistants[0]?.name ||
+                        "Untitled Session"}
                     </span>
                   )}
                 </Button>
@@ -136,11 +155,12 @@ export default function Sidebar({
                     className="ml-2 opacity-0 group-hover:opacity-100 transition-opacity"
                     onClick={async (e) => {
                       e.stopPropagation(); // Prevent loading session when deleting
-                      if (window.confirm(`Are you sure you want to delete session "${session.name || "Untitled Session"}"?`)) {
+                      if (
+                        window.confirm(
+                          `Are you sure you want to delete session "${session.name || "Untitled Session"}"?`,
+                        )
+                      ) {
                         await deleteSession(session.id);
-                        // Re-fetch sessions after deletion
-                        const updatedSessions = await dbService.sessions.getPage(1, -1);
-                        setSessions(updatedSessions.items);
                       }
                     }}
                   >
@@ -155,7 +175,11 @@ export default function Sidebar({
 
       {/* Settings Button */}
       <div className="p-4 flex-shrink-0 border-t">
-        <Button variant="ghost" className="w-full justify-start" onClick={onOpenSettings}>
+        <Button
+          variant="ghost"
+          className="w-full justify-start"
+          onClick={onOpenSettings}
+        >
           {isCollapsed ? "⚙" : "Settings"}
         </Button>
       </div>

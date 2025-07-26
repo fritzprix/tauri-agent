@@ -1,7 +1,6 @@
 import { createId } from "@paralleldrive/cuid2";
 import React, { useEffect, useRef, useState, useMemo } from "react";
 import { useAssistantContext } from "../context/AssistantContext";
-import { useChatContext } from "../hooks/use-chat";
 import { useMCPServer } from "../hooks/use-mcp-server";
 import { useLocalTools } from "../context/LocalToolContext";
 import { StreamableMessage } from "../types/chat";
@@ -13,6 +12,8 @@ import MessageBubble from "./MessageBubble";
 import { ToolCaller } from "./orchestrators/ToolCaller";
 import TerminalHeader from "./TerminalHeader";
 import { Button } from "./ui";
+import { useChatContext } from "../context/ChatContext";
+import { useSessionContext } from "../context/SessionContext";
 
 const logger = getLogger("Chat");
 
@@ -39,7 +40,8 @@ export default function Chat({
     [mcpTools, localTools],
   );
   const [input, setInput] = useState("");
-  const { submit, isLoading, messages, currentSession } = useChatContext();
+  const {current: currentSession } = useSessionContext();
+  const { submit, isLoading, messages } = useChatContext();
 
   // Since ChatContainer ensures currentSession exists before rendering Chat,
   // we can safely assert it's not null here
@@ -129,6 +131,8 @@ export default function Chat({
       logger.error("Error submitting message:", err);
     }
   };
+
+  logger.info("last message : ", {message: messages.length > 0 ? messages[messages.length - 1]:undefined})
 
   return (
     <div className="h-full w-full bg-black text-green-400 font-mono flex flex-col rounded-lg overflow-hidden shadow-2xl shadow-green-400/30">

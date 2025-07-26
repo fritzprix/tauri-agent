@@ -1,16 +1,17 @@
 import React, {
   createContext,
   useCallback,
+  useContext,
   useEffect,
   useRef,
   useState,
 } from "react";
 import { useAIService } from "../hooks/use-ai-service";
 import { useMCPServer } from "../hooks/use-mcp-server";
-import { StreamableMessage, Session, Assistant } from "../types/chat";
+import { dbService } from "../lib/db"; // Import dbService and dbUtils
+import { StreamableMessage } from "../types/chat";
 import { useAssistantContext } from "./AssistantContext";
-import { createId } from "@paralleldrive/cuid2";
-import { dbService, dbUtils } from "../lib/db"; // Import dbService and dbUtils
+import { useSessionContext } from "./SessionContext";
 
 export interface ChatContextType {
   messages: StreamableMessage[];
@@ -30,16 +31,6 @@ export interface ChatContextType {
   isLoading: boolean;
   error: Error | null;
   submit: (messages?: StreamableMessage[]) => Promise<StreamableMessage>;
-  currentSession: Session | null;
-  startNewSession: (
-    assistants: Assistant[],
-    type: "single" | "group",
-    name?: string,
-    description?: string,
-  ) => Promise<void>;
-  loadSession: (sessionId: string) => Promise<void>;
-  clearCurrentSession: () => void;
-  deleteSession: (sessionId: string) => Promise<void>;
 }
 
 export const ChatContext = createContext<ChatContextType | undefined>(
@@ -53,8 +44,8 @@ interface ChatProviderProps {
 export const ChatContextProvider: React.FC<ChatProviderProps> = ({
   children,
 }) => {
+  const { current: currentSession } = useSessionContext();
   const [messages, setMessages] = useState<StreamableMessage[]>([]);
-  const [currentSession, setCurrentSession] = useState<Session | null>(null);
   const messagesRef = useRef(messages);
   const {
     error,
@@ -101,39 +92,6 @@ export const ChatContextProvider: React.FC<ChatProviderProps> = ({
     }
   }, [response]);
 
-  const startNewSession = useCallback(
-    async (
-      assistants: Assistant[],
-      type: "single" | "group",
-      name?: string,
-      description?: string,
-    ): Promise<void> => {
-      try {
-        const newSession: Session = {
-          id: createId(),
-          type,
-          assistants,
-          name:
-            name ||
-            (type === "single" ? assistants[0]?.name : "New Group Chat"),
-          description:
-            description ||
-            (type === "single"
-              ? assistants[0]?.systemPrompt
-              : "A new group conversation"),
-          createdAt: new Date(),
-          updatedAt: new Date(),
-        };
-        await dbService.sessions.upsert(newSession);
-        setCurrentSession(newSession);
-        setMessages([]);
-      } catch (error) {
-        console.error("Failed to start new session:", error);
-        throw error;
-      }
-    },
-    [],
-  );
 
   const addMessage = useCallback(
     async (message: StreamableMessage): Promise<StreamableMessage> => {
@@ -280,49 +238,11 @@ export const ChatContextProvider: React.FC<ChatProviderProps> = ({
     [],
   );
 
-  const loadSession = useCallback(async (sessionId: string): Promise<void> => {
-    try {
-      const session = await dbService.sessions.read(sessionId);
-      if (!session) {
-        throw new Error(`Session with ID ${sessionId} not found.`);
-      }
-
-      setCurrentSession(session);
-      // Use optimized query to get messages by sessionId directly
-      const sessionMessages = await dbUtils.getAllMessagesForSession(sessionId);
-      setMessages(sessionMessages);
-    } catch (error) {
-      console.error("Failed to load session:", error);
-      setCurrentSession(null);
-      setMessages([]);
-      throw error;
-    }
-  }, []);
 
   const getMessages = useCallback(() => {
     return messagesRef.current;
   }, []);
 
-  const clearCurrentSession = useCallback(() => {
-    setCurrentSession(null);
-    setMessages([]);
-  }, []);
-
-  const deleteSession = useCallback(
-    async (sessionId: string): Promise<void> => {
-      try {
-        await dbService.sessions.delete(sessionId); // This already deletes associated messages in a transaction
-
-        if (currentSession?.id === sessionId) {
-          clearCurrentSession();
-        }
-      } catch (error) {
-        console.error("Failed to delete session:", error);
-        throw error;
-      }
-    },
-    [currentSession, clearCurrentSession],
-  );
 
   const submit = useCallback(
     async (messageToAdd?: StreamableMessage[]): Promise<StreamableMessage> => {
@@ -387,14 +307,18 @@ export const ChatContextProvider: React.FC<ChatProviderProps> = ({
         isLoading,
         error,
         submit,
-        currentSession,
-        startNewSession,
-        loadSession,
-        clearCurrentSession,
-        deleteSession,
       }}
     >
       {children}
     </ChatContext.Provider>
   );
 };
+
+
+export function useChatContext(): ChatContextType {
+  const context = useContext(ChatContext);
+  if (!context) {
+    throw Error();
+  }
+  return context;
+}

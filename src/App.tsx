@@ -1,7 +1,6 @@
 import { useState } from "react";
 import ChatContainer from "./components/ChatContainer";
 import SettingsModal from "./components/SettingsModal";
-import { ChatContextProvider } from "./context/ChatContext";
 import "./globals.css";
 import { ModelOptionsProvider } from "./context/ModelProvider";
 import { LocalToolProvider } from "./context/LocalToolContext";
@@ -13,6 +12,8 @@ import Sidebar from "./components/Sidebar";
 import Group from "./components/Group"; // New import
 import History from "./components/History"; // New import
 import GroupCreationModal from "./components/GroupCreationModal"; // New import
+import { ChatContextProvider } from "./context/ChatContext";
+import { SessionContextProvider } from "./context/SessionContext";
 
 type CurrentView = "chat" | "group" | "history";
 
@@ -40,50 +41,52 @@ function App() {
     <div className="h-screen bg-gray-900 text-white flex">
       <SettingsProvider>
         <AssistantContextProvider>
-          <ModelOptionsProvider>
-            <MCPServerProvider>
-              <LocalToolProvider>
-                <WeatherTool />
-                <ChatContextProvider>
-                  {/* Sidebar */}
-                  <Sidebar
-                    isCollapsed={isSidebarCollapsed}
-                    onToggleCollapse={() =>
-                      setIsSidebarCollapsed(!isSidebarCollapsed)
-                    }
-                    onOpenSettings={() => setIsSettingsModalOpen(true)}
-                    onViewChange={setCurrentView}
-                    currentView={currentView}
-                    onOpenGroupCreationModal={() =>
-                      setIsGroupCreationModalOpen(true)
-                    } // Pass new prop
-                  />
+          <SessionContextProvider>
+            <ModelOptionsProvider>
+              <MCPServerProvider>
+                <LocalToolProvider>
+                  <ChatContextProvider>
+                    <WeatherTool />
+                    {/* Sidebar */}
+                    <Sidebar
+                      isCollapsed={isSidebarCollapsed}
+                      onToggleCollapse={() =>
+                        setIsSidebarCollapsed(!isSidebarCollapsed)
+                      }
+                      onOpenSettings={() => setIsSettingsModalOpen(true)}
+                      onViewChange={setCurrentView}
+                      currentView={currentView}
+                      onOpenGroupCreationModal={() =>
+                        setIsGroupCreationModalOpen(true)
+                      } // Pass new prop
+                    />
 
-                  {/* Main Content Area */}
-                  <main
-                    className={`flex-1 flex flex-col overflow-hidden ${isSidebarCollapsed ? "ml-0" : "ml-64"}`}
-                  >
-                    <header className="flex justify-between items-center p-4 border-b border-gray-700 flex-shrink-0">
-                      <h1 className="text-xl font-bold text-green-400">
-                        MCP Agent
-                      </h1>
-                    </header>
-                    <div className="flex-1 overflow-auto">
-                      {renderMainContent()}
-                    </div>
-                  </main>
-                  <SettingsModal
-                    isOpen={isSettingsModalOpen}
-                    onClose={() => setIsSettingsModalOpen(false)}
-                  />
-                  <GroupCreationModal
-                    isOpen={isGroupCreationModalOpen}
-                    onClose={() => setIsGroupCreationModalOpen(false)}
-                  />
-                </ChatContextProvider>
-              </LocalToolProvider>
-            </MCPServerProvider>
-          </ModelOptionsProvider>
+                    {/* Main Content Area */}
+                    <main
+                      className={`flex-1 flex flex-col overflow-hidden ${isSidebarCollapsed ? "ml-0" : "ml-64"}`}
+                    >
+                      <header className="flex justify-between items-center p-4 border-b border-gray-700 flex-shrink-0">
+                        <h1 className="text-xl font-bold text-green-400">
+                          MCP Agent
+                        </h1>
+                      </header>
+                      <div className="flex-1 overflow-auto">
+                        {renderMainContent()}
+                      </div>
+                    </main>
+                    <SettingsModal
+                      isOpen={isSettingsModalOpen}
+                      onClose={() => setIsSettingsModalOpen(false)}
+                    />
+                    <GroupCreationModal
+                      isOpen={isGroupCreationModalOpen}
+                      onClose={() => setIsGroupCreationModalOpen(false)}
+                    />
+                  </ChatContextProvider>
+                </LocalToolProvider>
+              </MCPServerProvider>
+            </ModelOptionsProvider>
+          </SessionContextProvider>
         </AssistantContextProvider>
       </SettingsProvider>
     </div>
