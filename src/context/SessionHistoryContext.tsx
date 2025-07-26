@@ -92,6 +92,7 @@ export function SessionHistoryProvider({ children }: { children: ReactNode }) {
       setSize((size) => size + 1);
     }
   }, [isLoading, hasMore, setSize]);
+
   useEffect(() => {
     logger.info("current session : ", { currentSession });
   }, [currentSession]);
@@ -112,28 +113,36 @@ export function SessionHistoryProvider({ children }: { children: ReactNode }) {
         messageWithSessionId,
       });
 
-      await mutate((currentData) => {
-        if (!currentData || currentData.length === 0) {
-          const newPage: Page<StreamableMessage> = {
-            items: [messageWithSessionId],
-            page: 1,
-            pageSize: PAGE_SIZE,
-            totalItems: 1,
-            hasNextPage: false,
-            hasPreviousPage: false,
-          };
-          logger.info("Creating new page with first message:", { newPage });
-          return [newPage];
-        }
-        const newData = [...currentData];
-        const lastPage = newData[newData.length - 1];
-        lastPage.items = [...lastPage.items, messageWithSessionId];
-        logger.info("Added message to existing page:", {
-          messageId: messageWithSessionId.id,
-          totalMessages: lastPage.items.length,
-        });
-        return newData;
-      }, false);
+      // 낙관적 업데이트 전 현재 데이터 백업
+      const previousData = data;
+
+      // 낙관적 업데이트
+      await mutate(
+        (currentData) => {
+          if (!currentData || currentData.length === 0) {
+            const newPage: Page<StreamableMessage> = {
+              items: [messageWithSessionId],
+              page: 1,
+              pageSize: PAGE_SIZE,
+              totalItems: 1,
+              hasNextPage: false,
+              hasPreviousPage: false,
+            };
+            logger.info("Creating new page with first message:", { newPage });
+            return [newPage];
+          }
+          const newData = [...currentData];
+          const lastPage = { ...newData[newData.length - 1] };
+          lastPage.items = [...lastPage.items, messageWithSessionId];
+          newData[newData.length - 1] = lastPage;
+          logger.info("Added message to existing page:", {
+            messageId: messageWithSessionId.id,
+            totalMessages: lastPage.items.length,
+          });
+          return newData;
+        },
+        { revalidate: false },
+      );
 
       try {
         await dbService.messages.upsert(messageWithSessionId);
@@ -142,12 +151,13 @@ export function SessionHistoryProvider({ children }: { children: ReactNode }) {
         });
       } catch (e) {
         logger.error("Failed to add message, rolling back", e);
-        await mutate();
+        // 실제 롤백: 이전 데이터로 복원
+        await mutate(previousData, { revalidate: false });
         throw e;
       }
       return messageWithSessionId;
     },
-    [currentSession, mutate, validateMessage],
+    [currentSession, mutate, validateMessage, data],
   );
 
   /**
@@ -166,49 +176,63 @@ export function SessionHistoryProvider({ children }: { children: ReactNode }) {
         sessionId: currentSession.id,
       }));
 
-      await mutate((currentData) => {
-        if (!currentData || currentData.length === 0) {
-          const newPage: Page<StreamableMessage> = {
-            items: messagesWithSessionId,
-            page: 1,
-            pageSize: PAGE_SIZE,
-            totalItems: messagesWithSessionId.length,
-            hasNextPage: false,
-            hasPreviousPage: false,
-          };
-          return [newPage];
-        }
-        const newData = [...currentData];
-        const lastPage = newData[newData.length - 1];
-        lastPage.items = [...lastPage.items, ...messagesWithSessionId];
-        return newData;
-      }, false);
+      // 낙관적 업데이트 전 현재 데이터 백업
+      const previousData = data;
+
+      await mutate(
+        (currentData) => {
+          if (!currentData || currentData.length === 0) {
+            const newPage: Page<StreamableMessage> = {
+              items: messagesWithSessionId,
+              page: 1,
+              pageSize: PAGE_SIZE,
+              totalItems: messagesWithSessionId.length,
+              hasNextPage: false,
+              hasPreviousPage: false,
+            };
+            return [newPage];
+          }
+          const newData = [...currentData];
+          const lastPage = { ...newData[newData.length - 1] };
+          lastPage.items = [...lastPage.items, ...messagesWithSessionId];
+          newData[newData.length - 1] = lastPage;
+          return newData;
+        },
+        { revalidate: false },
+      );
 
       try {
         await dbService.messages.upsertMany(messagesWithSessionId);
       } catch (e) {
         logger.error("Failed to add message batch, rolling back", e);
-        await mutate();
+        // 실제 롤백: 이전 데이터로 복원
+        await mutate(previousData, { revalidate: false });
         throw e;
       }
       return messagesWithSessionId;
     },
-    [currentSession, mutate, validateMessage],
+    [currentSession, mutate, validateMessage, data],
   );
 
   const updateMessage = useCallback(
     async (messageId: string, updates: Partial<StreamableMessage>) => {
       if (!currentSession) throw new Error("No active session.");
 
-      await mutate((currentData) => {
-        if (!currentData) return [];
-        return currentData.map((page) => ({
-          ...page,
-          items: page.items.map((msg) =>
-            msg.id === messageId ? { ...msg, ...updates } : msg,
-          ),
-        }));
-      }, false);
+      // 낙관적 업데이트 전 현재 데이터 백업
+      const previousData = data;
+
+      await mutate(
+        (currentData) => {
+          if (!currentData) return [];
+          return currentData.map((page) => ({
+            ...page,
+            items: page.items.map((msg) =>
+              msg.id === messageId ? { ...msg, ...updates } : msg,
+            ),
+          }));
+        },
+        { revalidate: false },
+      );
 
       try {
         const existing = messages.find((m) => m.id === messageId);
@@ -216,49 +240,61 @@ export function SessionHistoryProvider({ children }: { children: ReactNode }) {
         await dbService.messages.upsert({ ...existing, ...updates });
       } catch (e) {
         logger.error("Failed to update message, rolling back", e);
-        await mutate();
+        // 실제 롤백: 이전 데이터로 복원
+        await mutate(previousData, { revalidate: false });
         throw e;
       }
     },
-    [currentSession, mutate, messages],
+    [currentSession, mutate, messages, data],
   );
 
   const deleteMessage = useCallback(
     async (messageId: string) => {
       if (!currentSession) throw new Error("No active session.");
 
-      await mutate((currentData) => {
-        if (!currentData) return [];
-        return currentData.map((page) => ({
-          ...page,
-          items: page.items.filter((msg) => msg.id !== messageId),
-        }));
-      }, false);
+      // 낙관적 업데이트 전 현재 데이터 백업
+      const previousData = data;
+
+      await mutate(
+        (currentData) => {
+          if (!currentData) return [];
+          return currentData.map((page) => ({
+            ...page,
+            items: page.items.filter((msg) => msg.id !== messageId),
+          }));
+        },
+        { revalidate: false },
+      );
 
       try {
         await dbService.messages.delete(messageId);
       } catch (e) {
         logger.error("Failed to delete message, rolling back", e);
-        await mutate();
+        // 실제 롤백: 이전 데이터로 복원
+        await mutate(previousData, { revalidate: false });
         throw e;
       }
     },
-    [currentSession, mutate],
+    [currentSession, mutate, data],
   );
 
   const clearHistory = useCallback(async () => {
     if (!currentSession) throw new Error("No active session.");
 
-    await mutate([], false);
+    // 낙관적 업데이트 전 현재 데이터 백업
+    const previousData = data;
+
+    await mutate([], { revalidate: false });
 
     try {
       await dbUtils.deleteAllMessagesForSession(currentSession.id);
     } catch (e) {
       logger.error("Failed to clear history, rolling back", e);
-      await mutate();
+      // 실제 롤백: 이전 데이터로 복원
+      await mutate(previousData, { revalidate: false });
       throw e;
     }
-  }, [currentSession, mutate]);
+  }, [currentSession, mutate, data]);
 
   const contextValue = useMemo(
     () => ({

@@ -12,8 +12,8 @@ import Sidebar from "./components/Sidebar";
 import Group from "./components/Group"; // New import
 import History from "./components/History"; // New import
 import GroupCreationModal from "./components/GroupCreationModal"; // New import
-import { ChatContextProvider } from "./context/ChatContext";
 import { SessionContextProvider } from "./context/SessionContext";
+import { SessionHistoryProvider } from "./context/SessionHistoryContext";
 
 type CurrentView = "chat" | "group" | "history";
 
@@ -42,10 +42,10 @@ function App() {
       <SettingsProvider>
         <AssistantContextProvider>
           <SessionContextProvider>
-            <ModelOptionsProvider>
-              <MCPServerProvider>
-                <LocalToolProvider>
-                  <ChatContextProvider>
+            <SessionHistoryProvider>
+              <ModelOptionsProvider>
+                <MCPServerProvider>
+                  <LocalToolProvider>
                     <WeatherTool />
                     {/* Sidebar */}
                     <Sidebar
@@ -82,10 +82,10 @@ function App() {
                       isOpen={isGroupCreationModalOpen}
                       onClose={() => setIsGroupCreationModalOpen(false)}
                     />
-                  </ChatContextProvider>
-                </LocalToolProvider>
-              </MCPServerProvider>
-            </ModelOptionsProvider>
+                  </LocalToolProvider>
+                </MCPServerProvider>
+              </ModelOptionsProvider>
+            </SessionHistoryProvider>
           </SessionContextProvider>
         </AssistantContextProvider>
       </SettingsProvider>

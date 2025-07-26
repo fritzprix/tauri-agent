@@ -12,8 +12,9 @@ import MessageBubble from "./MessageBubble";
 import { ToolCaller } from "./orchestrators/ToolCaller";
 import TerminalHeader from "./TerminalHeader";
 import { Button } from "./ui";
-import { useChatContext } from "../context/ChatContext";
+// import { useChatContext } from "../context/ChatContext";
 import { useSessionContext } from "../context/SessionContext";
+import { useChatContext } from "../hooks/use-chat";
 
 const logger = getLogger("Chat");
 
@@ -40,7 +41,7 @@ export default function Chat({
     [mcpTools, localTools],
   );
   const [input, setInput] = useState("");
-  const {current: currentSession } = useSessionContext();
+  const { current: currentSession } = useSessionContext();
   const { submit, isLoading, messages } = useChatContext();
 
   // Since ChatContainer ensures currentSession exists before rendering Chat,
@@ -132,7 +133,9 @@ export default function Chat({
     }
   };
 
-  logger.info("last message : ", {message: messages.length > 0 ? messages[messages.length - 1]:undefined})
+  logger.info("last message : ", {
+    message: messages.length > 0 ? messages[messages.length - 1] : undefined,
+  });
 
   return (
     <div className="h-full w-full bg-black text-green-400 font-mono flex flex-col rounded-lg overflow-hidden shadow-2xl shadow-green-400/30">

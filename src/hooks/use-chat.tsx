@@ -114,16 +114,6 @@ export const useChatContext = (): ChatContextReturn => {
         } else {
           messagesToSend = messages;
         }
-        const streamingId = createId();
-        logger.info("Starting new streaming message:", { streamingId });
-        setCurrentStreaming({
-          id: streamingId,
-          content: "",
-          role: "assistant" as const,
-          sessionId: currentSession.id,
-          isStreaming: true,
-        });
-
         const aiResponse = await triggerAIService(messagesToSend);
 
         if (aiResponse) {
