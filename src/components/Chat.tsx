@@ -98,6 +98,7 @@ export default function Chat({
     setAttachedFiles((prev) => [...prev, ...newAttachedFiles]);
     e.target.value = "";
   };
+
   const removeAttachedFile = (index: number) => {
     setAttachedFiles((prev) => prev.filter((_, i) => i !== index));
   };
@@ -132,10 +133,6 @@ export default function Chat({
       logger.error("Error submitting message:", err);
     }
   };
-
-  logger.info("last message : ", {
-    message: messages.length > 0 ? messages[messages.length - 1] : undefined,
-  });
 
   return (
     <div className="h-full w-full bg-black text-green-400 font-mono flex flex-col rounded-lg overflow-hidden shadow-2xl shadow-green-400/30">
